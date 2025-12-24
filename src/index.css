@@ -1,0 +1,111 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-background text-textDark;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  * {
+    @apply transition-colors duration-200;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary hover:bg-opacity-80 text-white font-semibold py-2 px-4 rounded-lg shadow-pastel;
+  }
+
+  .btn-secondary {
+    @apply bg-secondary hover:bg-opacity-80 text-white font-semibold py-2 px-4 rounded-lg shadow-pastel;
+  }
+
+  .btn-success {
+    @apply bg-success hover:bg-opacity-80 text-white font-semibold py-2 px-4 rounded-lg shadow-pastel;
+  }
+
+  .btn-warning {
+    @apply bg-warning hover:bg-opacity-80 text-textDark font-semibold py-2 px-4 rounded-lg shadow-pastel;
+  }
+
+  .card {
+    @apply bg-white rounded-xl shadow-pastel p-6;
+  }
+
+  .card-lg {
+    @apply bg-white rounded-xl shadow-pastel-lg p-8;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-2 border-2 border-secondary border-opacity-30 rounded-lg focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary focus:ring-opacity-20;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-sm font-medium;
+  }
+
+  .modal-overlay {
+    @apply fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 animate-fadeIn;
+  }
+
+  .modal-content {
+    @apply bg-white rounded-xl shadow-pastel-lg p-6 max-w-2xl w-full mx-4 animate-slideIn;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Custom scrollbar for better UX */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #B3E5FC;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #FFB3E6;
+}
+
+/* Drag and drop styles */
+.drag-over {
+  @apply border-primary bg-primary bg-opacity-5;
+}
+
+.dragging {
+  @apply opacity-50;
+}
+
+/* Loading animation */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
