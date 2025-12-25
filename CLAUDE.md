@@ -1,30 +1,37 @@
 # Bank Statement Analyzer - Quick Context
 
 ## Project Overview
-AI-powered bank statement analyzer built with React + Vite. Parses PDFs, categorizes expenses using OpenAI GPT-4o-mini, and provides visual analytics.
+AI-powered bank statement analyzer built with React + Vite + Python Flask + Supabase. Parses PDFs using Camelot, categorizes expenses using OpenAI GPT-4o-mini, provides visual analytics, and syncs data across devices with optional cloud storage.
 
 ## Tech Stack at a Glance
 - **Frontend**: React 18 + Vite
+- **Backend**: Python 3.8+ Flask + Camelot PDF parser
+- **Database**: Supabase (PostgreSQL) with Row-Level Security
+- **Authentication**: Supabase Auth (email/password)
 - **Styling**: Tailwind CSS (vibrant pastel theme)
 - **Charts**: Recharts
-- **PDF**: PDF.js (pdfjs-dist)
+- **PDF**: Camelot (Python backend) for superior table extraction
 - **AI**: OpenAI GPT-4o-mini-2024-07-18
-- **Storage**: localStorage
+- **Storage**: Supabase (cloud) + localStorage (fallback)
 - **State**: React Context API
 - **Utilities**: Fuse.js (fuzzy matching), UUID, Axios
 
 ## Key Architecture Decisions
 
-### 1. Client-Side Only (No Backend)
-- All data stored in browser localStorage
-- Only external calls: OpenAI API
-- Reduces complexity and hosting costs
-- User data privacy (stays on device)
+### 1. Hybrid Architecture (Frontend + Backend + Cloud)
+- **Python Flask Backend** for PDF parsing with Camelot (superior accuracy)
+- **Supabase Cloud** for authentication and data sync (optional)
+- **localStorage Fallback** for offline-first functionality
+- **User Choice**: Use with or without account
+- Automatic migration from localStorage to Supabase on first login
 
 ### 2. PDF Parsing Strategy
-- **Primary**: Template-based parsing (fast, accurate for known banks)
-- **Fallback**: AI parsing with OpenAI (flexible for unknown formats)
-- Templates auto-saved after first successful parse
+- **Primary**: Python Camelot for accurate table extraction from PDFs
+- **Bank-Specific Rules**: TD Bank format detection and parsing
+- **Account Number Extraction**: Regex patterns to extract account numbers
+- **Date Parsing**: Handles NOV05 format with year inference
+- **Amount Handling**: Proper negative (withdrawals) and positive (deposits) signs
+- **Backend API**: Flask endpoint at http://localhost:5000/parse-pdf
 
 ### 3. AI Categorization Workflow
 1. Check vendor mappings (fuzzy match)
@@ -32,31 +39,48 @@ AI-powered bank statement analyzer built with React + Vite. Parses PDFs, categor
 3. Apply only if confidence > 0.7
 4. Otherwise mark as "Unassigned"
 
-### 4. State Management
-- Context API for global state
-- localStorage service for persistence
-- Auto-save on every modification
-- Export/import for backup
+### 4. State Management & Data Flow
+- **Context API** for global state (authentication, transactions, categories, account types)
+- **Dual Storage** - Supabase (authenticated) + localStorage (fallback)
+- **Auto-save** on every modification
+- **Migration Logic** - One-time localStorage → Supabase migration on first login
+- **Authentication State** - Session management with auto-refresh tokens
+- **Row-Level Security** - Users only access their own data
 
 ## File Structure Quick Reference
 ```
+backend/                 # Python Flask API
+├── app.py              # Flask server with Camelot PDF parsing
+├── requirements.txt    # Python dependencies
+└── venv/               # Virtual environment
+
 src/
 ├── components/          # React UI components
 │   ├── Charts/         # Recharts visualization
-│   ├── Dashboard.jsx   # Main analytics view
-│   ├── FileUpload.jsx  # PDF upload & processing
-│   ├── TransactionTable.jsx  # Table with filters/sort
-│   └── CategoryPanel.jsx     # Category management
+│   ├── AccountTypePanel.jsx    # Account type management
+│   ├── AuthModal.jsx           # Login/signup modal
+│   ├── CategoryPanel.jsx       # Category management
+│   ├── Dashboard.jsx           # Main analytics view
+│   ├── DeleteConfirmationModal.jsx  # Custom delete modal
+│   ├── FileUpload.jsx          # PDF upload & processing
+│   ├── SimilarTransactionsModal.jsx # Similar tx detection
+│   ├── TemplateManager.jsx     # Manage uploaded statements
+│   └── TransactionTable.jsx    # Table with filters/sort
 ├── context/
-│   └── AppContext.jsx  # Global state & actions
+│   └── AppContext.jsx  # Global state, auth, dual storage
+├── lib/
+│   └── supabaseClient.js  # Supabase configuration
 ├── services/
-│   ├── openaiService.js      # AI integration
-│   ├── pdfParser.js          # PDF extraction
-│   ├── storageService.js     # localStorage wrapper
-│   └── templateService.js    # Bank templates (not yet created)
+│   ├── authService.js           # Authentication (Supabase)
+│   ├── openaiService.js         # AI integration
+│   ├── pdfParser.js             # Calls Python backend API
+│   ├── storageService.js        # localStorage wrapper
+│   ├── supabaseStorageService.js # Supabase CRUD operations
+│   └── templateService.js       # Bank templates
 └── utils/
-    ├── fuzzyMatch.js         # Vendor matching
     ├── duplicateDetector.js  # Find duplicates
+    ├── fuzzyMatch.js         # Vendor matching
+    ├── similarityMatcher.js  # Similar transaction detection
     └── validators.js         # Form validation
 ```
 
@@ -99,29 +123,46 @@ const DEFAULT_CATEGORIES = [
 
 ## Environment Variables
 Required in `.env`:
-- `VITE_OPENAI_API_KEY` - OpenAI API key (required)
+- `VITE_PYTHON_API_URL` - Python backend URL (default: http://localhost:5000)
+- `VITE_SUPABASE_URL` - Supabase project URL (optional)
+- `VITE_SUPABASE_ANON_KEY` - Supabase anonymous key (optional)
+- `VITE_OPENAI_API_KEY` - OpenAI API key (optional, for AI categorization)
 - `VITE_OPENAI_MODEL` - Model name (optional, defaults to gpt-4o-mini-2024-07-18)
 - `VITE_MAX_FILE_SIZE_MB` - Max PDF size (optional, defaults to 10)
 
+**Note**: Supabase credentials are optional. App works with localStorage only if not provided.
+
 ## Known Limitations
 
-### Current MVP Constraints
-1. **No multi-user support** - Single user per browser
-2. **No cloud sync** - Data tied to browser localStorage
-3. **PDF must be text-based** - Scanned/image PDFs won't work
-4. **Template parsing basic** - Complex layouts may fail
-5. **No data encryption** - localStorage is plain text
-6. **No offline AI** - Requires internet for categorization
+### Current Constraints
+1. **PDF must be text-based** - Scanned/image PDFs won't work (Camelot limitation)
+2. **Python Backend Required** - Need to run Flask server for PDF parsing
+3. **Internet Required** - For AI categorization and Supabase sync
+4. **Bank-Specific Parsing** - Currently optimized for TD Bank format
+5. **Ghostscript Dependency** - Required for Camelot PDF processing
+
+### Removed Limitations
+1. ✅ **Multi-user support** - Now available with Supabase authentication
+2. ✅ **Cloud sync** - Optional Supabase integration
+3. ✅ **Data encryption** - Supabase uses HTTPS and PostgreSQL encryption
+4. ✅ **Superior PDF parsing** - Camelot provides accurate table extraction
 
 ### Browser Compatibility
 - **Requires**: localStorage, ES6+, Fetch API
 - **Tested**: Chrome, Firefox, Safari (latest)
 - **Not supported**: IE11, very old browsers
 
-### localStorage Limits
+### Data Storage Limits
+**localStorage (Fallback)**:
 - **Typical quota**: 5-10MB per domain
 - **Est. capacity**: ~5,000-10,000 transactions
-- **Overflow handling**: Graceful error, prompt to export/clear
+- **Overflow handling**: Graceful error, prompt to export/clear or sign up
+
+**Supabase (Cloud)**:
+- **Free tier**: 500MB database, unlimited API requests
+- **Est. capacity**: Hundreds of thousands of transactions
+- **Auto-scaling**: Upgrade plan as needed
+- **Row-Level Security**: Users only access their own data
 
 ## Error Handling Philosophy
 
@@ -277,13 +318,125 @@ npm run lint
 - No XSS protection needed (no user-generated HTML)
 - CORS not an issue (direct API calls)
 
+## New Features (Latest Release)
+
+### 🔐 Supabase Integration
+**What**: Optional cloud storage and authentication for multi-device sync
+
+**Key Files**:
+- `src/lib/supabaseClient.js` - Supabase client configuration
+- `src/services/authService.js` - Authentication (signUp, signIn, signOut, getSession)
+- `src/services/supabaseStorageService.js` - CRUD operations for all entities
+- `supabase-schema.sql` - Database schema with RLS policies
+
+**How It Works**:
+1. User can use app without account (localStorage only)
+2. User signs up/logs in → Automatic migration from localStorage to Supabase
+3. All data operations check if user is authenticated
+4. If authenticated → Save to Supabase, else → Save to localStorage
+5. Row-Level Security ensures users only see their own data
+6. Session tokens auto-refresh
+
+**AppContext Changes**:
+- Added `user`, `session`, `authLoading` state
+- Added `checkAuth()` to verify session on mount
+- Added `loadSupabaseData()` to fetch from cloud
+- Added `migrateLocalStorageToSupabase()` for one-time migration
+- Modified all CRUD operations to support dual storage
+
+### 🏦 Account Type Management
+**What**: Create and manage account types (Checking, Savings, Credit, Loan)
+
+**Key Features**:
+- Duplicate account names allowed with different types (e.g., "TD Bank" Checking + "TD Bank" Credit)
+- Statement and transaction count tracking
+- Edit account associations for uploaded statements
+- Color-coded indicators
+
+**Key Files**:
+- `src/components/AccountTypePanel.jsx` - UI for managing account types
+- `src/context/AppContext.jsx` - CRUD operations (addAccountType, updateAccountType, deleteAccountType)
+
+**Validation Logic**:
+```javascript
+// Allow duplicate names as long as typeFlag is different
+if (accountTypes.some(at => at.name === accountType.name && at.typeFlag === accountType.typeFlag)) {
+  setError(`Account type "${accountType.name}" with type "${accountType.typeFlag}" already exists`);
+  return false;
+}
+```
+
+**Stats Calculation**:
+```javascript
+// Count unique statements (accountNumber + month combinations)
+const uniqueStatements = new Set(
+  accountTypeTransactions.map(t => `${t.accountNumber || 'N/A'}-${t.month || t.date.substring(0, 7)}`)
+);
+const statementCount = uniqueStatements.size;
+```
+
+### 🔍 Similar Transactions Detection
+**What**: Automatically find and bulk categorize similar uncategorized transactions
+
+**Key Files**:
+- `src/utils/similarityMatcher.js` - Fuzzy matching algorithm (90% threshold)
+- `src/components/SimilarTransactionsModal.jsx` - UI for bulk categorization
+
+**How It Works**:
+1. User categorizes a transaction
+2. System searches for similar uncategorized transactions (Levenshtein distance)
+3. If found → Show modal with similar transactions
+4. User selects which ones to categorize together
+5. Bulk categorization applied
+
+**Similarity Algorithm**:
+```javascript
+function calculateSimilarity(str1, str2) {
+  const distance = levenshteinDistance(str1, str2);
+  const maxLength = Math.max(str1.length, str2.length);
+  return 1 - (distance / maxLength); // Returns 0-1 (1 = identical)
+}
+// Match if similarity >= 0.9
+```
+
+### 🗑️ Custom Delete Confirmation Modal
+**What**: Themed modal with keyboard shortcuts instead of browser's confirm()
+
+**Key Features**:
+- Keyboard shortcuts: Enter (confirm), Esc (cancel)
+- Shows CTRL+Z reminder for undo
+- Matches app theme
+- Event listeners for keyboard input
+
+**Key Files**:
+- `src/components/DeleteConfirmationModal.jsx` - Custom modal
+- `src/components/TransactionTable.jsx` - Uses modal for delete confirmation
+
+### 📊 Enhanced Manage Uploads
+**What**: View and edit all uploaded statements grouped by account type
+
+**Key Features**:
+- Shows account type, account number, month, transaction count
+- Statement duration (date range)
+- Edit account type and account number per statement
+- Delete entire statement uploads
+- Expandable transaction list per statement
+
+**Grouping Logic**:
+```javascript
+const uploadKey = `${accountTypeId}-${accountNumber}-${month}`;
+// Groups transactions by unique combination
+```
+
 ## Quick Start for Claude
 When working on this project:
 1. Run `npm install` if first time
-2. Copy `.env.example` to `.env` and add OpenAI key
-3. Run `npm run dev`
-4. Check browser console for errors
-5. Test with sample PDF from TD or RBC
+2. Copy `.env.example` to `.env` and add required keys
+3. **Start Python backend**: `cd backend && python app.py`
+4. **Start frontend**: `npm run dev`
+5. Check browser console for errors
+6. Test with sample PDF from TD Bank
+7. **Optional**: Set up Supabase project and add credentials to `.env`
 
 ## Contact
 This is a personal finance tool. For questions about implementation, check:

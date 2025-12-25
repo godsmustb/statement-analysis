@@ -40,7 +40,10 @@ A modern, AI-powered web application for analyzing bank statements with intellig
 - Drag-and-drop categorization
 - Bulk selection and operations
 - Manual transaction entry
-- Edit and delete capabilities
+- Edit descriptions (separate from original transaction text)
+- Delete with custom modal (keyboard shortcuts: Enter/Esc)
+- Undo delete with CTRL+Z
+- Account Type assignment per transaction
 
 ### 🎨 Category Management
 - Default categories with flexible customization
@@ -56,10 +59,31 @@ A modern, AI-powered web application for analyzing bank statements with intellig
 - Multi-statement merge support
 
 ### 💾 Data Persistence
-- Browser localStorage (no server required)
+- **Supabase Cloud Storage** - Multi-device sync with user authentication
+- **localStorage Fallback** - Works offline without account
+- **Auto-Migration** - Seamless migration from localStorage to Supabase on first login
 - Export/import functionality
-- Data stays on your device
-- Clear data option
+- Data stays secure with Row-Level Security
+
+### 🔐 User Authentication
+- Email/password authentication via Supabase
+- Automatic session management with token refresh
+- Secure data isolation per user (Row-Level Security)
+- Optional - use app without account (localStorage only)
+- One-time migration from localStorage to cloud on first login
+
+### 🏦 Account Type Management
+- Create and manage multiple account types (Checking, Savings, Credit, Loan)
+- Support for duplicate account names with different types (e.g., "TD Bank" Checking and "TD Bank" Credit)
+- Statement and transaction count tracking per account type
+- Edit account associations for uploaded statements
+- Color-coded account type indicators
+
+### 🔍 Similar Transactions Detection
+- Automatic detection of similar uncategorized transactions
+- Fuzzy matching algorithm (90% similarity threshold)
+- Bulk categorization modal for similar transactions
+- Smart suggestions to speed up categorization workflow
 
 ## 🚀 Quick Start
 
@@ -116,10 +140,17 @@ cp .env.example .env
 
 Edit `.env` and configure:
 ```env
+# Python Backend
 VITE_PYTHON_API_URL=http://localhost:5000
 VITE_APP_NAME=Bank Statement Analyzer
 VITE_MAX_FILE_SIZE_MB=10
+
+# Supabase (Optional - for cloud sync and multi-device access)
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
+
+**Note**: Supabase credentials are optional. App works with localStorage only if not provided.
 
 **Start frontend development server:**
 ```bash
@@ -203,7 +234,8 @@ If duplicate transactions are detected:
 
 ### AI & Services
 - **OpenAI GPT-4o-mini** - Transaction categorization and parsing
-- **localStorage** - Client-side data persistence
+- **Supabase** - Authentication and PostgreSQL database (optional)
+- **localStorage** - Client-side fallback data persistence
 
 ### Development
 - **ESLint** - Code linting
@@ -225,24 +257,39 @@ The app uses a vibrant pastel color palette:
 
 ```
 statement-analysis/
+├── backend/             # Python Flask API
+│   ├── app.py          # Flask server
+│   ├── requirements.txt
+│   └── venv/           # Python virtual environment
 ├── public/              # Static assets
 ├── src/
 │   ├── components/      # React components
 │   │   ├── Charts/      # Chart components
-│   │   ├── Dashboard.jsx
-│   │   ├── FileUpload.jsx
-│   │   ├── TransactionTable.jsx
+│   │   ├── AccountTypePanel.jsx
+│   │   ├── AuthModal.jsx
 │   │   ├── CategoryPanel.jsx
+│   │   ├── Dashboard.jsx
+│   │   ├── DeleteConfirmationModal.jsx
+│   │   ├── FileUpload.jsx
+│   │   ├── SimilarTransactionsModal.jsx
+│   │   ├── TemplateManager.jsx
+│   │   ├── TransactionTable.jsx
 │   │   └── ...
 │   ├── context/         # React Context (state management)
+│   │   └── AppContext.jsx
+│   ├── lib/             # Third-party integrations
+│   │   └── supabaseClient.js
 │   ├── services/        # Business logic
+│   │   ├── authService.js
 │   │   ├── openaiService.js
 │   │   ├── pdfParser.js
 │   │   ├── storageService.js
+│   │   ├── supabaseStorageService.js
 │   │   └── templateService.js
 │   ├── utils/           # Utility functions
-│   │   ├── fuzzyMatch.js
 │   │   ├── duplicateDetector.js
+│   │   ├── fuzzyMatch.js
+│   │   ├── similarityMatcher.js
 │   │   └── validators.js
 │   ├── App.jsx          # Main app component
 │   ├── main.jsx         # Entry point
@@ -250,6 +297,7 @@ statement-analysis/
 ├── .env.example         # Environment template
 ├── .gitignore           # Git ignore rules
 ├── package.json         # Dependencies
+├── supabase-schema.sql  # Database schema
 ├── vite.config.js       # Vite configuration
 ├── tailwind.config.js   # Tailwind configuration
 └── README.md            # This file
@@ -271,13 +319,15 @@ Using OpenAI GPT-4o-mini (as of January 2025):
 
 ## 🔒 Privacy & Security
 
-- ✅ All data stored locally in browser localStorage
-- ✅ No external database or server storage
-- ✅ Only OpenAI API calls for categorization
-- ✅ API calls use secure HTTPS
-- ✅ No tracking or analytics
-- ✅ Export/import for data portability
-- ⚠️ Clear browser data = data loss (use export feature!)
+- ✅ **Row-Level Security** - Users can only access their own data in Supabase
+- ✅ **Optional Cloud Storage** - Works entirely offline with localStorage if preferred
+- ✅ **Secure Authentication** - Email/password with JWT tokens
+- ✅ **Automatic Token Refresh** - Session management handled automatically
+- ✅ **Data Encryption** - HTTPS for all API calls (Supabase + OpenAI)
+- ✅ **No Tracking** - Zero analytics or user tracking
+- ✅ **Export/Import** - Full data portability
+- ✅ **localStorage Fallback** - Works without account (data stays in browser)
+- ⚠️ **Backup Recommended** - Export data regularly or use Supabase for automatic sync
 
 ## 🚀 Deployment
 
@@ -391,6 +441,14 @@ For issues, questions, or suggestions:
 
 ## 🗺️ Roadmap
 
+### Completed Features ✅
+- [x] Supabase cloud sync (optional)
+- [x] User authentication
+- [x] Account Type management
+- [x] Similar transactions detection
+- [x] Custom delete confirmation modals
+- [x] Duplicate account names with different types
+
 ### Planned Features
 - [ ] Multi-bank comparison view
 - [ ] Budget setting and tracking
@@ -398,7 +456,6 @@ For issues, questions, or suggestions:
 - [ ] Export to CSV/Excel
 - [ ] Dark mode toggle
 - [ ] Mobile app (React Native)
-- [ ] Cloud sync (optional)
 - [ ] Split transactions
 - [ ] Custom recurring rules
 - [ ] Bill reminders
