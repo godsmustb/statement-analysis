@@ -42,6 +42,7 @@ class PDFParser {
       return {
         bankName: parsedData.bankName || selectedBank,
         statementMonth: parsedData.statementMonth,
+        accountNumber: parsedData.accountNumber, // Account number from PDF
         transactions: cleanedTransactions,
         parsingRules: parsedData.parsingRules || { method: 'camelot' },
         rawText: '' // Not needed anymore

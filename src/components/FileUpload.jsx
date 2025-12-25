@@ -5,16 +5,22 @@ import pdfParser from '../services/pdfParser';
 import { validateFile } from '../utils/validators';
 
 export default function FileUpload() {
-  const { addMultipleTransactions, autoCategorizeTransactions, addTemplate } = useApp();
+  const { addMultipleTransactions, autoCategorizeTransactions, addTemplate, accountTypes } = useApp();
   const [uploading, setUploading] = useState(false);
   const [uploadResults, setUploadResults] = useState([]);
   const [error, setError] = useState(null);
-  const [source, setSource] = useState('');
+  const [selectedAccountTypeId, setSelectedAccountTypeId] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
 
   const onDrop = useCallback(async (acceptedFiles) => {
-    if (!source.trim()) {
-      setError('Please enter an account nickname (Source) before uploading');
+    if (!selectedAccountTypeId) {
+      setError('Please select an account type before uploading');
+      return;
+    }
+
+    const selectedAccountType = accountTypes.find(at => at.id === selectedAccountTypeId);
+    if (!selectedAccountType) {
+      setError('Invalid account type selected');
       return;
     }
 
@@ -44,7 +50,7 @@ export default function FileUpload() {
         });
         setUploadResults([...results]);
 
-        const parsed = await pdfParser.parseFile(file, source);
+        const parsed = await pdfParser.parseFile(file, selectedAccountType.name);
 
         results[results.length - 1] = {
           fileName: file.name,
@@ -64,6 +70,7 @@ export default function FileUpload() {
           status: 'complete',
           bankName: parsed.bankName,
           month: parsed.statementMonth,
+          accountNumber: parsed.accountNumber, // Store account number from PDF
           transactionCount: parsed.transactions.length,
           transactions: categorized,
           parsingRules: parsed.parsingRules
@@ -73,7 +80,8 @@ export default function FileUpload() {
         if (parsed.parsingRules) {
           addTemplate({
             bankName: parsed.bankName,
-            source: source,
+            accountTypeId: selectedAccountTypeId,
+            accountTypeName: selectedAccountType.name,
             parsingRules: parsed.parsingRules
           });
         }
@@ -94,18 +102,21 @@ export default function FileUpload() {
     // Add all successful transactions immediately
     const successful = results.filter(r => r.status === 'complete');
     if (successful.length > 0) {
-      // Add all transactions with source and account number
+      // Add all transactions with account type and account number
       const allTransactions = successful.flatMap(r =>
         r.transactions.map(t => ({
           ...t,
           bank: r.bankName,
-          source: source,
-          accountNumber: accountNumber
+          accountTypeId: selectedAccountTypeId,
+          accountTypeName: selectedAccountType.name,
+          accountTypeFlag: selectedAccountType.typeFlag,
+          // Use backend-detected account number if available, otherwise use manual input
+          accountNumber: r.accountNumber || accountNumber
         }))
       );
       addMultipleTransactions(allTransactions);
     }
-  }, [source, accountNumber, addMultipleTransactions, autoCategorizeTransactions, addTemplate]);
+  }, [selectedAccountTypeId, accountTypes, accountNumber, addMultipleTransactions, autoCategorizeTransactions, addTemplate]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -132,20 +143,30 @@ export default function FileUpload() {
     <div className="card mb-6">
         <h2 className="text-xl font-bold text-textDark mb-4">Upload Bank Statements</h2>
 
-        {/* Source and Account Number inputs */}
+        {/* Account Type and Account Number inputs */}
         <div className="mb-4 space-y-3">
           <div>
             <label className="block text-sm font-medium text-textDark mb-1">
-              Account Nickname (Source) *
+              Account Type *
             </label>
-            <input
-              type="text"
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
-              placeholder="e.g., TD Checking, RBC Savings"
+            <select
+              value={selectedAccountTypeId}
+              onChange={(e) => setSelectedAccountTypeId(e.target.value)}
               className="input-field"
               disabled={uploading}
-            />
+            >
+              <option value="">Select an account type...</option>
+              {accountTypes.map(accountType => (
+                <option key={accountType.id} value={accountType.id}>
+                  {accountType.name} ({accountType.typeFlag})
+                </option>
+              ))}
+            </select>
+            {accountTypes.length === 0 && (
+              <p className="text-sm text-gray-500 mt-1">
+                No account types available. Add one using the Account Types panel.
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-textDark mb-1">
@@ -170,11 +191,11 @@ export default function FileUpload() {
               : 'border-secondary border-opacity-50 hover:border-primary hover:bg-primary hover:bg-opacity-5'
           }`}
         >
-          <input {...getInputProps()} disabled={uploading || !source.trim()} />
+          <input {...getInputProps()} disabled={uploading || !selectedAccountTypeId} />
 
-          {!source.trim() ? (
+          {!selectedAccountTypeId ? (
             <div>
-              <p className="text-gray-500 mb-2">Please enter account nickname first</p>
+              <p className="text-gray-500 mb-2">Please select an account type first</p>
             </div>
           ) : uploading ? (
             <div>

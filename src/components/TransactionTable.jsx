@@ -20,7 +20,6 @@ export default function TransactionTable() {
   const [filterCategory, setFilterCategory] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [selectedTransactions, setSelectedTransactions] = useState(new Set());
-  const [draggedCategory, setDraggedCategory] = useState(null);
 
   // Filter and sort transactions
   const filteredTransactions = useMemo(() => {
@@ -105,29 +104,6 @@ export default function TransactionTable() {
       categorizeMultipleTransactions(Array.from(selectedTransactions), category);
       setSelectedTransactions(new Set());
     }
-  };
-
-  const handleDragStart = (e, transactionId) => {
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('transactionId', transactionId);
-  };
-
-  const handleDrop = (e, category) => {
-    e.preventDefault();
-    const transactionId = e.dataTransfer.getData('transactionId');
-    if (transactionId) {
-      categorizeTransaction(transactionId, category);
-    }
-    setDraggedCategory(null);
-  };
-
-  const handleDragOver = (e, category) => {
-    e.preventDefault();
-    setDraggedCategory(category);
-  };
-
-  const handleDragLeave = () => {
-    setDraggedCategory(null);
   };
 
   const getSortIcon = (field) => {
@@ -222,7 +198,7 @@ export default function TransactionTable() {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
         <table className="w-full">
           <thead>
             <tr className="border-b-2 border-gray-200">
@@ -261,25 +237,33 @@ export default function TransactionTable() {
               >
                 Category {getSortIcon('category')}
               </th>
-              <th className="text-left p-3">Source</th>
-              <th className="text-left p-3">Account Number</th>
+              <th className="text-left p-3">Account Type</th>
               <th className="text-left p-3">Actions</th>
             </tr>
           </thead>
           <tbody>
             {filteredTransactions.length === 0 ? (
               <tr>
-                <td colSpan="9" className="text-center p-8 text-gray-500">
+                <td colSpan="8" className="text-center p-8 text-gray-500">
                   No transactions found. Upload a bank statement to get started!
                 </td>
               </tr>
             ) : (
-              filteredTransactions.map((transaction) => (
-                <tr
+              filteredTransactions.map((transaction) => {
+                // Filter categories based on transaction type
+                const isIncome = transaction.amount > 0;
+                const availableCategories = categories.filter(cat => {
+                  if (cat === 'Unassigned') return true; // Always show Unassigned
+                  if (isIncome) {
+                    return cat.endsWith(' (Income)'); // Income transactions show only income categories
+                  } else {
+                    return !cat.endsWith(' (Income)'); // Expense transactions show only expense categories
+                  }
+                });
+
+                return (<tr
                   key={transaction.id}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, transaction.id)}
-                  className="border-b border-gray-100 hover:bg-background transition-colors cursor-move"
+                  className="border-b border-gray-100 hover:bg-background transition-colors"
                 >
                   <td className="p-3">
                     <input
@@ -313,13 +297,14 @@ export default function TransactionTable() {
                       className="text-sm border border-gray-300 rounded px-2 py-1"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {categories.map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
+                      {availableCategories.map(cat => {
+                        // Display name without (Income) suffix
+                        const displayName = cat.replace(' (Income)', '');
+                        return <option key={cat} value={cat}>{displayName}</option>;
+                      })}
                     </select>
                   </td>
-                  <td className="p-3 text-sm">{transaction.source || transaction.bank}</td>
-                  <td className="p-3 text-sm">{transaction.accountNumber || '-'}</td>
+                  <td className="p-3 text-sm">{transaction.accountTypeName || transaction.source || transaction.bank}</td>
                   <td className="p-3">
                     <button
                       onClick={() => {
@@ -334,37 +319,13 @@ export default function TransactionTable() {
                     </button>
                   </td>
                 </tr>
-              ))
+              );
+              })
             )}
           </tbody>
         </table>
       </div>
 
-      {/* Category Drop Zones */}
-      {filteredTransactions.length > 0 && (
-        <div className="mt-6 p-4 bg-background rounded-lg">
-          <p className="text-sm font-semibold text-textDark mb-3">
-            Drag transactions to categories:
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {categories.map(category => (
-              <div
-                key={category}
-                onDrop={(e) => handleDrop(e, category)}
-                onDragOver={(e) => handleDragOver(e, category)}
-                onDragLeave={handleDragLeave}
-                className={`px-4 py-2 rounded-lg border-2 transition-all ${
-                  draggedCategory === category
-                    ? 'border-primary bg-primary bg-opacity-20 scale-105'
-                    : 'border-gray-300 bg-white hover:border-secondary'
-                }`}
-              >
-                <span className="text-sm font-medium">{category}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
