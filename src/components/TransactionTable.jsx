@@ -1,6 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatCurrency, formatDate } from '../utils/validators';
+import { findSimilarTransactions } from '../utils/similarityMatcher';
+import SimilarTransactionsModal from './SimilarTransactionsModal';
+import DeleteConfirmationModal from './DeleteConfirmationModal';
 
 export default function TransactionTable() {
   const {
@@ -20,6 +23,12 @@ export default function TransactionTable() {
   const [filterCategory, setFilterCategory] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [selectedTransactions, setSelectedTransactions] = useState(new Set());
+  const [editingDescriptionId, setEditingDescriptionId] = useState(null);
+  const [showSimilarModal, setShowSimilarModal] = useState(false);
+  const [selectedSourceTransaction, setSelectedSourceTransaction] = useState(null);
+  const [similarTransactionsList, setSimilarTransactionsList] = useState([]);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [transactionToDelete, setTransactionToDelete] = useState(null);
 
   // Filter and sort transactions
   const filteredTransactions = useMemo(() => {
@@ -198,7 +207,7 @@ export default function TransactionTable() {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+      <div className="overflow-x-auto max-h-[1500px] overflow-y-auto">
         <table className="w-full">
           <thead>
             <tr className="border-b-2 border-gray-200">
@@ -216,14 +225,11 @@ export default function TransactionTable() {
               >
                 Date {getSortIcon('date')}
               </th>
-              <th className="text-left p-3">
-                Transaction
-              </th>
               <th
                 className="text-left p-3 cursor-pointer hover:bg-gray-50"
                 onClick={() => handleSort('description')}
               >
-                Description {getSortIcon('description')}
+                Transaction / Description {getSortIcon('description')}
               </th>
               <th
                 className="text-left p-3 cursor-pointer hover:bg-gray-50"
@@ -244,7 +250,7 @@ export default function TransactionTable() {
           <tbody>
             {filteredTransactions.length === 0 ? (
               <tr>
-                <td colSpan="8" className="text-center p-8 text-gray-500">
+                <td colSpan="7" className="text-center p-8 text-gray-500">
                   No transactions found. Upload a bank statement to get started!
                 </td>
               </tr>
@@ -274,18 +280,35 @@ export default function TransactionTable() {
                     />
                   </td>
                   <td className="p-3 text-sm">{formatDate(transaction.date)}</td>
-                  <td className="p-3 text-sm max-w-xs truncate" title={transaction.originalDescription || transaction.description}>
-                    {transaction.originalDescription || transaction.description}
-                  </td>
-                  <td className="p-3">
-                    <input
-                      type="text"
-                      value={transaction.description || ''}
-                      onChange={(e) => updateTransaction(transaction.id, { description: e.target.value })}
-                      className="w-full text-sm border border-gray-300 rounded px-2 py-1"
-                      placeholder="Enter custom name..."
-                      title={transaction.description}
-                    />
+                  <td className="p-3 relative group">
+                    {editingDescriptionId === transaction.id ? (
+                      <input
+                        type="text"
+                        value={transaction.description || ''}
+                        onChange={(e) => updateTransaction(transaction.id, { description: e.target.value })}
+                        onBlur={() => setEditingDescriptionId(null)}
+                        onKeyPress={(e) => e.key === 'Enter' && setEditingDescriptionId(null)}
+                        className="w-full text-sm border border-gray-300 rounded px-2 py-1"
+                        placeholder="Enter custom description..."
+                        autoFocus
+                      />
+                    ) : (
+                      <div
+                        className="text-sm max-w-xs truncate cursor-pointer"
+                        onClick={() => setEditingDescriptionId(transaction.id)}
+                      >
+                        {transaction.description && transaction.description !== transaction.originalDescription
+                          ? transaction.description
+                          : (transaction.originalDescription || transaction.description)}
+
+                        {/* Tooltip on hover */}
+                        <div className="hidden group-hover:block absolute z-10 bg-gray-800 text-white text-xs rounded px-2 py-1 mt-1 whitespace-normal max-w-sm">
+                          {transaction.description && transaction.description !== transaction.originalDescription
+                            ? `Original: ${transaction.originalDescription || transaction.description}`
+                            : 'Click to add custom description'}
+                        </div>
+                      </div>
+                    )}
                   </td>
                   <td className={`p-3 text-sm font-semibold ${transaction.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
                     {formatCurrency(transaction.amount)}
@@ -293,7 +316,28 @@ export default function TransactionTable() {
                   <td className="p-3">
                     <select
                       value={transaction.category || 'Unassigned'}
-                      onChange={(e) => categorizeTransaction(transaction.id, e.target.value)}
+                      onChange={(e) => {
+                        const category = e.target.value;
+
+                        // Only check for similar transactions if user is actively categorizing (not Unassigned)
+                        if (category && category !== 'Unassigned') {
+                          const similar = findSimilarTransactions(transaction, transactions);
+
+                          if (similar.length > 0) {
+                            // Found similar transactions - show modal
+                            setSelectedSourceTransaction(transaction);
+                            setSimilarTransactionsList(similar);
+                            setShowSimilarModal(true);
+                            // Don't categorize yet - wait for user to select in modal
+                          } else {
+                            // No similar transactions - just categorize this one
+                            categorizeTransaction(transaction.id, category);
+                          }
+                        } else {
+                          // User selected "Unassigned" - just categorize normally
+                          categorizeTransaction(transaction.id, category);
+                        }
+                      }}
                       className="text-sm border border-gray-300 rounded px-2 py-1"
                       onClick={(e) => e.stopPropagation()}
                     >
@@ -308,9 +352,8 @@ export default function TransactionTable() {
                   <td className="p-3">
                     <button
                       onClick={() => {
-                        if (window.confirm('Are you sure you want to delete this transaction?')) {
-                          deleteTransaction(transaction.id);
-                        }
+                        setTransactionToDelete(transaction.id);
+                        setShowDeleteModal(true);
                       }}
                       className="text-red-500 hover:text-red-700 text-sm"
                       title="Delete"
@@ -326,6 +369,49 @@ export default function TransactionTable() {
         </table>
       </div>
 
+      {/* Similar Transactions Modal */}
+      <SimilarTransactionsModal
+        isOpen={showSimilarModal}
+        onClose={() => {
+          setShowSimilarModal(false);
+          setSelectedSourceTransaction(null);
+          setSimilarTransactionsList([]);
+        }}
+        sourceTransaction={selectedSourceTransaction}
+        similarTransactions={similarTransactionsList}
+        categories={categories}
+        onCategorize={(transactionIds, category) => {
+          // Include the source transaction ID in the bulk categorization
+          const allTransactionIds = selectedSourceTransaction
+            ? [...transactionIds, selectedSourceTransaction.id]
+            : transactionIds;
+
+          // Categorize all transactions (similar + source) in one call
+          categorizeMultipleTransactions(allTransactionIds, category);
+
+          // Close modal
+          setShowSimilarModal(false);
+          setSelectedSourceTransaction(null);
+          setSimilarTransactionsList([]);
+        }}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setTransactionToDelete(null);
+        }}
+        onConfirm={() => {
+          if (transactionToDelete) {
+            deleteTransaction(transactionToDelete);
+          }
+          setShowDeleteModal(false);
+          setTransactionToDelete(null);
+        }}
+        message="Are you sure you want to delete this transaction?"
+      />
     </div>
   );
 }

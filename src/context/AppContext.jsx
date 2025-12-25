@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import storageService from '../services/storageService';
+import supabaseStorageService from '../services/supabaseStorageService';
+import authService from '../services/authService';
 import openaiService from '../services/openaiService';
 import { findDuplicates, findRecurringTransactions } from '../utils/duplicateDetector';
 import { fuzzyMatchVendor, extractVendorName } from '../utils/fuzzyMatch';
@@ -16,6 +18,12 @@ export function useApp() {
 }
 
 export function AppProvider({ children }) {
+  // Authentication state
+  const [user, setUser] = useState(null);
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // Data state
   const [transactions, setTransactions] = useState([]);
   const [categories, setCategories] = useState([]);
   const [templates, setTemplates] = useState([]);
@@ -28,10 +36,38 @@ export function AppProvider({ children }) {
   const [selectedBank, setSelectedBank] = useState('');
   const [deletedTransactions, setDeletedTransactions] = useState([]);
 
-  // Load data from localStorage on mount
+  // Check for existing session on mount
   useEffect(() => {
-    loadData();
+    checkAuth();
   }, []);
+
+  // Listen to auth state changes
+  useEffect(() => {
+    const { data: authListener } = authService.onAuthStateChange((event, session) => {
+      console.log('Auth state changed:', event, session?.user?.email);
+      setSession(session);
+      setUser(session?.user || null);
+
+      if (session?.user) {
+        // User logged in - load Supabase data and migrate localStorage if needed
+        loadSupabaseData(session.user.id);
+      } else {
+        // User logged out - load localStorage data
+        loadData();
+      }
+    });
+
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
+  }, []);
+
+  // Load data from localStorage on mount (fallback for non-authenticated users)
+  useEffect(() => {
+    if (!authLoading && !user) {
+      loadData();
+    }
+  }, [authLoading, user]);
 
   // Set default month to current month
   useEffect(() => {
@@ -40,6 +76,28 @@ export function AppProvider({ children }) {
       setSelectedMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
     }
   }, [selectedMonth]);
+
+  async function checkAuth() {
+    try {
+      const { session, error } = await authService.getSession();
+      if (error) {
+        console.error('Auth check error:', error);
+      }
+      setSession(session);
+      setUser(session?.user || null);
+
+      if (session?.user) {
+        await loadSupabaseData(session.user.id);
+      } else {
+        loadData();
+      }
+    } catch (error) {
+      console.error('Error checking auth:', error);
+      loadData();
+    } finally {
+      setAuthLoading(false);
+    }
+  }
 
   function loadData() {
     try {
@@ -52,6 +110,99 @@ export function AppProvider({ children }) {
     } catch (error) {
       console.error('Error loading data:', error);
       setError('Failed to load data from storage');
+    }
+  }
+
+  async function loadSupabaseData(userId) {
+    try {
+      setLoading(true);
+
+      // Initialize defaults for new users
+      await supabaseStorageService.initializeDefaults(userId);
+
+      // Check if we need to migrate localStorage data
+      const localTransactions = storageService.getTransactions();
+      const supabaseTransactions = await supabaseStorageService.getTransactions(userId);
+
+      if (localTransactions.length > 0 && supabaseTransactions.length === 0) {
+        // Migrate localStorage to Supabase
+        console.log('Migrating localStorage data to Supabase...');
+        await migrateLocalStorageToSupabase(userId);
+      } else {
+        // Load from Supabase
+        const [transactions, categories, accountTypes] = await Promise.all([
+          supabaseStorageService.getTransactions(userId),
+          supabaseStorageService.getCategories(userId),
+          supabaseStorageService.getAccountTypes(userId)
+        ]);
+
+        setTransactions(transactions);
+        setCategories(categories);
+        setAccountTypes(accountTypes);
+      }
+
+      setLoading(false);
+    } catch (error) {
+      console.error('Error loading Supabase data:', error);
+      setError('Failed to load data from Supabase');
+      setLoading(false);
+    }
+  }
+
+  async function migrateLocalStorageToSupabase(userId) {
+    try {
+      setLoading(true);
+      console.log('Starting migration from localStorage to Supabase...');
+
+      // Get all localStorage data
+      const localTransactions = storageService.getTransactions();
+      const localCategories = storageService.getCategories();
+      const localAccountTypes = storageService.getAccountTypes();
+
+      // Migrate categories
+      if (localCategories.length > 0) {
+        await supabaseStorageService.saveCategories(userId, localCategories);
+        console.log(`Migrated ${localCategories.length} categories`);
+      }
+
+      // Migrate account types
+      if (localAccountTypes.length > 0) {
+        await supabaseStorageService.saveAccountTypes(userId, localAccountTypes);
+        console.log(`Migrated ${localAccountTypes.length} account types`);
+      }
+
+      // Migrate transactions
+      if (localTransactions.length > 0) {
+        await supabaseStorageService.saveTransactions(userId, localTransactions);
+        console.log(`Migrated ${localTransactions.length} transactions`);
+      }
+
+      // Reload from Supabase to get IDs
+      await loadSupabaseData(userId);
+
+      console.log('Migration complete!');
+      setLoading(false);
+    } catch (error) {
+      console.error('Migration error:', error);
+      setError('Failed to migrate data to Supabase');
+      setLoading(false);
+    }
+  }
+
+  async function handleSignOut() {
+    try {
+      await authService.signOut();
+      // Clear local state
+      setUser(null);
+      setSession(null);
+      setTransactions([]);
+      setCategories([]);
+      setAccountTypes([]);
+      // Load localStorage data
+      loadData();
+    } catch (error) {
+      console.error('Sign out error:', error);
+      setError('Failed to sign out');
     }
   }
 
@@ -383,8 +534,9 @@ export function AppProvider({ children }) {
   // Account Type operations
   function addAccountType(accountType) {
     try {
-      if (accountTypes.some(at => at.name === accountType.name)) {
-        setError('Account type already exists');
+      // Allow duplicate names as long as the typeFlag is different
+      if (accountTypes.some(at => at.name === accountType.name && at.typeFlag === accountType.typeFlag)) {
+        setError(`Account type "${accountType.name}" with type "${accountType.typeFlag}" already exists`);
         return false;
       }
 
@@ -480,7 +632,13 @@ export function AppProvider({ children }) {
   }
 
   const value = {
-    // State
+    // Authentication state
+    user,
+    session,
+    authLoading,
+    isAuthenticated: !!user,
+
+    // Data state
     transactions,
     categories,
     templates,
@@ -497,6 +655,9 @@ export function AppProvider({ children }) {
     setSelectedMonth,
     setSelectedBank,
     setError,
+
+    // Authentication operations
+    signOut: handleSignOut,
 
     // Transaction operations
     addTransaction,

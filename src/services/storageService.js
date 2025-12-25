@@ -15,7 +15,10 @@ const DEFAULT_CATEGORIES = [
   'Restaurants',
   'Subscriptions',
   'Other',
-  'Unassigned'
+  'Unassigned',
+  'Main Job (Income)',
+  'Side Hustle (Income)',
+  'Investments (Income)'
 ];
 
 const DEFAULT_ACCOUNT_TYPES = [

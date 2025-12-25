@@ -26,8 +26,17 @@ export default function AccountTypePanel() {
 
   const getAccountTypeStats = (accountType) => {
     const accountTypeTransactions = transactions.filter(t => t.accountTypeId === accountType.id);
-    const total = accountTypeTransactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
-    return { count: accountTypeTransactions.length, total };
+
+    // Count unique statements (unique combinations of accountNumber + month)
+    const uniqueStatements = new Set(
+      accountTypeTransactions.map(t => `${t.accountNumber || 'N/A'}-${t.month || t.date.substring(0, 7)}`)
+    );
+    const statementCount = uniqueStatements.size;
+
+    return {
+      transactionCount: accountTypeTransactions.length,
+      statementCount
+    };
   };
 
   const handleAddAccountType = () => {
@@ -38,8 +47,9 @@ export default function AccountTypePanel() {
       return;
     }
 
-    if (accountTypes.some(at => at.name.toLowerCase() === trimmedName.toLowerCase())) {
-      setError('Account type already exists');
+    // Check if this exact combination of name + typeFlag exists
+    if (accountTypes.some(at => at.name.toLowerCase() === trimmedName.toLowerCase() && at.typeFlag === newAccountTypeFlag)) {
+      setError(`"${trimmedName}" with type "${newAccountTypeFlag}" already exists`);
       return;
     }
 
@@ -66,9 +76,9 @@ export default function AccountTypePanel() {
       return;
     }
 
-    // Check if name already exists (excluding current account type)
-    if (accountTypes.some(at => at.id !== id && at.name.toLowerCase() === trimmedName.toLowerCase())) {
-      setError('Account type already exists');
+    // Check if this exact combination of name + typeFlag exists (excluding current account type)
+    if (accountTypes.some(at => at.id !== id && at.name.toLowerCase() === trimmedName.toLowerCase() && at.typeFlag === editTypeFlag)) {
+      setError(`"${trimmedName}" with type "${editTypeFlag}" already exists`);
       return;
     }
 
@@ -192,7 +202,7 @@ export default function AccountTypePanel() {
                         <span className="text-xs bg-gray-200 px-2 py-1 rounded">{accountType.typeFlag}</span>
                       </div>
                       <div className="text-sm text-gray-600">
-                        {stats.count} transactions • ${stats.total.toFixed(2)}
+                        {stats.statementCount} statements • {stats.transactionCount} transactions
                       </div>
                     </div>
                   )}
@@ -251,7 +261,7 @@ export default function AccountTypePanel() {
       <ConfirmationModal
         isOpen={deleteConfirm !== null}
         title="Delete Account Type"
-        message={`Are you sure you want to delete "${deleteConfirm?.name}"? ${getAccountTypeStats(deleteConfirm || { id: '' }).count} transactions will be affected.`}
+        message={`Are you sure you want to delete "${deleteConfirm?.name}"? ${getAccountTypeStats(deleteConfirm || { id: '' }).transactionCount} transactions will be affected.`}
         confirmText="Delete"
         cancelText="Cancel"
         type="danger"
