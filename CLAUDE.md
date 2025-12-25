@@ -428,6 +428,150 @@ const uploadKey = `${accountTypeId}-${accountNumber}-${month}`;
 // Groups transactions by unique combination
 ```
 
+### 💰 Cost Type Classification System
+**What**: Automatic classification of transactions as Fixed or Variable costs
+
+**Key Features**:
+- Fixed costs: Predictable recurring expenses (Housing, Transportation, Main Job)
+- Variable costs: Fluctuating expenses (Grocery, Restaurants, Shopping, Subscriptions)
+- Auto-assignment when categorizing transactions
+- Visual badges: Orange for FIXED, Blue for VARIABLE
+- Category-level cost type defaults
+- Transaction-level manual override
+
+**Key Files**:
+- `src/utils/categoryMetadata.js` - Cost type constants and helpers (NEW)
+- `src/services/storageService.js` - Category metadata storage
+- `src/services/supabaseStorageService.js` - Cloud storage for category metadata
+- `src/context/AppContext.jsx` - Auto-assign cost types on categorization
+- `src/components/CategoryPanel.jsx` - Cost type badge display and editor
+- `src/components/TransactionTable.jsx` - Cost type badges in Description field
+
+**Default Cost Type Mappings**:
+```javascript
+{
+  'Housing': { isIncome: false, costType: 'Fixed' },
+  'Transportation': { isIncome: false, costType: 'Fixed' },
+  'Main Job (Income)': { isIncome: true, costType: 'Fixed' },
+  'Grocery': { isIncome: false, costType: 'Variable' },
+  'Restaurants': { isIncome: false, costType: 'Variable' },
+  'Shopping': { isIncome: false, costType: 'Variable' },
+  'Subscriptions': { isIncome: false, costType: 'Variable' }
+}
+```
+
+**Badge Styling**:
+```javascript
+// Orange for Fixed
+{ backgroundColor: '#FF6B35', color: '#FFFFFF', label: 'FIXED' }
+// Blue for Variable
+{ backgroundColor: '#4ECDC4', color: '#FFFFFF', label: 'VARIABLE' }
+```
+
+### 🗑️ Bulk Delete & Action History
+**What**: Comprehensive undo system that tracks last 5 actions for reversal
+
+**Key Features**:
+- Track DELETE, CATEGORIZE, UPDATE actions
+- Undo last 5 actions with Reverse button (↶)
+- Bulk delete multiple selected transactions
+- Dynamic confirmation messages ("Delete X transactions?")
+- Replaces single-transaction undo with comprehensive history
+
+**Key Files**:
+- `src/context/AppContext.jsx` - Action history state and undo logic
+- `src/components/TransactionTable.jsx` - Bulk delete UI and Reverse button
+
+**Action History Implementation**:
+```javascript
+// Action types tracked
+type Action = {
+  type: 'DELETE' | 'CATEGORIZE' | 'UPDATE',
+  timestamp: string,
+  data: {
+    deletedTransactions?: Transaction[],  // For DELETE
+    previousState?: any[],                // For CATEGORIZE
+    id?: string,                         // For UPDATE
+    previousValues?: any                 // For UPDATE
+  }
+}
+
+// Undo logic
+function undoLastAction() {
+  const lastAction = actionHistory[0];
+  switch (lastAction.type) {
+    case 'DELETE':
+      // Restore deleted transactions
+      restoreTransactions(lastAction.data.deletedTransactions);
+      break;
+    case 'CATEGORIZE':
+      // Restore previous categories
+      restoreCategories(lastAction.data.previousState);
+      break;
+    case 'UPDATE':
+      // Restore previous values
+      restoreValues(lastAction.data.id, lastAction.data.previousValues);
+      break;
+  }
+  removeActionFromHistory();
+}
+```
+
+**UI Changes**:
+- Removed "Undo Delete" button
+- Added "Reverse" button with ↶ icon (shows count of available undos)
+- Added "Delete (X)" button when multiple transactions selected
+- Bulk delete shows dynamic message in confirmation modal
+
+### 🔧 Supabase Migration Fixes
+**What**: Fixed column name transformation errors between JavaScript and PostgreSQL
+
+**Problem**: Supabase uses snake_case (account_number) but JavaScript uses camelCase (accountNumber)
+
+**Solution**: Added transformation helper functions in `supabaseStorageService.js`
+
+**Key Changes**:
+```javascript
+// Transform account types
+_transformAccountTypeFromDB(at) {
+  return {
+    id: at.id,
+    name: at.name,
+    typeFlag: at.type_flag,      // snake_case → camelCase
+    createdAt: at.created_at
+  };
+}
+
+_transformAccountTypeToDB(at, userId) {
+  return {
+    id: at.id,
+    user_id: userId,
+    name: at.name,
+    type_flag: at.typeFlag,       // camelCase → snake_case
+    created_at: at.createdAt
+  };
+}
+
+// Transform transactions
+_transformTransactionFromDB(t) {
+  return {
+    accountNumber: t.account_number,
+    accountTypeId: t.account_type_id,
+    accountTypeName: t.account_type_name,
+    accountTypeFlag: t.account_type_flag,
+    originalDescription: t.original_description,
+    costType: t.cost_type,
+    createdAt: t.created_at,
+    // ... other fields
+  };
+}
+```
+
+**Fixed Errors**:
+- ✅ `Could not find 'createdAt' column` → Now uses `created_at`
+- ✅ `Could not find 'accountNumber' column` → Now uses `account_number`
+- ✅ All CRUD operations properly transform column names
+
 ## Quick Start for Claude
 When working on this project:
 1. Run `npm install` if first time

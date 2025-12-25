@@ -39,11 +39,14 @@ A modern, AI-powered web application for analyzing bank statements with intellig
 - Sortable and filterable transaction table
 - Drag-and-drop categorization
 - Bulk selection and operations
+- Bulk delete with dynamic confirmation messages
 - Manual transaction entry
 - Edit descriptions (separate from original transaction text)
 - Delete with custom modal (keyboard shortcuts: Enter/Esc)
-- Undo delete with CTRL+Z
+- **Action History** - Undo last 5 actions (delete, categorize, update)
+- Reverse button (↶) to undo any action
 - Account Type assignment per transaction
+- Cost Type classification (Fixed/Variable) per transaction
 
 ### 🎨 Category Management
 - Default categories with flexible customization
@@ -51,6 +54,15 @@ A modern, AI-powered web application for analyzing bank statements with intellig
 - Color-coded category badges
 - Transaction count and total tracking
 - Auto-reassignment on category deletion
+- Cost Type assignment per category (Fixed/Variable)
+
+### 💰 Cost Type Classification
+- **Fixed Costs** - Predictable recurring expenses (Housing, Transportation, Main Job)
+- **Variable Costs** - Fluctuating expenses (Grocery, Restaurants, Shopping, Subscriptions)
+- Auto-assignment when categorizing transactions
+- Visual badges: Orange for FIXED, Blue for VARIABLE
+- Manual override for each transaction
+- Category-level cost type defaults
 
 ### 🔍 Duplicate Detection
 - Intelligent duplicate identification
