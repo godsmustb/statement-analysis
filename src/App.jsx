@@ -5,6 +5,7 @@ import FileUpload from './components/FileUpload';
 import TemplateSelector from './components/TemplateSelector';
 import TransactionTable from './components/TransactionTable';
 import CategoryPanel from './components/CategoryPanel';
+import AccountTypePanel from './components/AccountTypePanel';
 import ManualEntryModal from './components/ManualEntryModal';
 
 function AppContent() {
@@ -66,6 +67,8 @@ function AppContent() {
               <TemplateSelector />
 
               <FileUpload />
+
+              <AccountTypePanel />
 
               <CategoryPanel />
             </div>

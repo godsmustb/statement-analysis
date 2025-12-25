@@ -3,22 +3,26 @@ const STORAGE_KEYS = {
   CATEGORIES: 'bank_analyzer_categories',
   TEMPLATES: 'bank_analyzer_templates',
   VENDOR_MAPPINGS: 'bank_analyzer_vendor_mappings',
-  SETTINGS: 'bank_analyzer_settings'
+  SETTINGS: 'bank_analyzer_settings',
+  ACCOUNT_TYPES: 'bank_analyzer_account_types'
 };
 
 const DEFAULT_CATEGORIES = [
   'Housing',
   'Transportation',
-  'Food',
+  'Grocery',
   'Shopping',
-  'Entertainment',
-  'Healthcare',
-  'Bills & Services',
-  'Personal Care',
-  'Travel',
-  'Income',
+  'Restaurants',
+  'Subscriptions',
   'Other',
   'Unassigned'
+];
+
+const DEFAULT_ACCOUNT_TYPES = [
+  { id: '1', name: 'TD Checking', typeFlag: 'Checking' },
+  { id: '2', name: 'TD Credit', typeFlag: 'Credit' },
+  { id: '3', name: 'RBC Checking', typeFlag: 'Checking' },
+  { id: '4', name: 'RBC Credit', typeFlag: 'Credit' }
 ];
 
 class StorageService {
@@ -29,6 +33,9 @@ class StorageService {
   initializeDefaults() {
     if (!this.getCategories().length) {
       this.saveCategories(DEFAULT_CATEGORIES);
+    }
+    if (!this.getAccountTypes().length) {
+      this.saveAccountTypes(DEFAULT_ACCOUNT_TYPES);
     }
   }
 
@@ -244,6 +251,58 @@ class StorageService {
     }
   }
 
+  // Account Types
+  getAccountTypes() {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.ACCOUNT_TYPES);
+      return data ? JSON.parse(data) : [];
+    } catch (error) {
+      console.error('Error reading account types:', error);
+      return [];
+    }
+  }
+
+  saveAccountTypes(accountTypes) {
+    try {
+      localStorage.setItem(STORAGE_KEYS.ACCOUNT_TYPES, JSON.stringify(accountTypes));
+      return true;
+    } catch (error) {
+      console.error('Error saving account types:', error);
+      return false;
+    }
+  }
+
+  addAccountType(accountType) {
+    const accountTypes = this.getAccountTypes();
+    // Check if account type with same name already exists
+    if (accountTypes.some(at => at.name === accountType.name)) {
+      return false;
+    }
+    accountTypes.push(accountType);
+    return this.saveAccountTypes(accountTypes);
+  }
+
+  updateAccountType(id, updates) {
+    const accountTypes = this.getAccountTypes();
+    const index = accountTypes.findIndex(at => at.id === id);
+    if (index !== -1) {
+      accountTypes[index] = { ...accountTypes[index], ...updates };
+      return this.saveAccountTypes(accountTypes);
+    }
+    return false;
+  }
+
+  deleteAccountType(id) {
+    const accountTypes = this.getAccountTypes();
+    const filtered = accountTypes.filter(at => at.id !== id);
+    return this.saveAccountTypes(filtered);
+  }
+
+  getAccountTypeById(id) {
+    const accountTypes = this.getAccountTypes();
+    return accountTypes.find(at => at.id === id);
+  }
+
   // Clear all data
   clearAllData() {
     try {
@@ -266,6 +325,7 @@ class StorageService {
       templates: this.getTemplates(),
       vendorMappings: this.getVendorMappings(),
       settings: this.getSettings(),
+      accountTypes: this.getAccountTypes(),
       exportDate: new Date().toISOString()
     };
   }
@@ -278,6 +338,7 @@ class StorageService {
       if (data.templates) this.saveTemplates(data.templates);
       if (data.vendorMappings) this.saveVendorMappings(data.vendorMappings);
       if (data.settings) this.saveSettings(data.settings);
+      if (data.accountTypes) this.saveAccountTypes(data.accountTypes);
       return true;
     } catch (error) {
       console.error('Error importing data:', error);

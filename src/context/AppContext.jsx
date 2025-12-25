@@ -21,6 +21,7 @@ export function AppProvider({ children }) {
   const [templates, setTemplates] = useState([]);
   const [vendorMappings, setVendorMappings] = useState({});
   const [settings, setSettings] = useState({});
+  const [accountTypes, setAccountTypes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState('');
@@ -47,6 +48,7 @@ export function AppProvider({ children }) {
       setTemplates(storageService.getTemplates());
       setVendorMappings(storageService.getVendorMappings());
       setSettings(storageService.getSettings());
+      setAccountTypes(storageService.getAccountTypes());
     } catch (error) {
       console.error('Error loading data:', error);
       setError('Failed to load data from storage');
@@ -378,6 +380,59 @@ export function AppProvider({ children }) {
     }
   }
 
+  // Account Type operations
+  function addAccountType(accountType) {
+    try {
+      if (accountTypes.some(at => at.name === accountType.name)) {
+        setError('Account type already exists');
+        return false;
+      }
+
+      const newAccountType = {
+        id: uuidv4(),
+        ...accountType,
+        createdAt: new Date().toISOString()
+      };
+
+      const updated = [...accountTypes, newAccountType];
+      setAccountTypes(updated);
+      storageService.saveAccountTypes(updated);
+      return newAccountType;
+    } catch (error) {
+      console.error('Error adding account type:', error);
+      setError('Failed to add account type');
+      return false;
+    }
+  }
+
+  function updateAccountType(id, updates) {
+    try {
+      const updated = accountTypes.map(at =>
+        at.id === id ? { ...at, ...updates } : at
+      );
+      setAccountTypes(updated);
+      storageService.saveAccountTypes(updated);
+      return true;
+    } catch (error) {
+      console.error('Error updating account type:', error);
+      setError('Failed to update account type');
+      return false;
+    }
+  }
+
+  function deleteAccountType(id) {
+    try {
+      const updated = accountTypes.filter(at => at.id !== id);
+      setAccountTypes(updated);
+      storageService.saveAccountTypes(updated);
+      return true;
+    } catch (error) {
+      console.error('Error deleting account type:', error);
+      setError('Failed to delete account type');
+      return false;
+    }
+  }
+
   // Utility functions
   function detectDuplicates() {
     return findDuplicates(transactions);
@@ -431,6 +486,7 @@ export function AppProvider({ children }) {
     templates,
     vendorMappings,
     settings,
+    accountTypes,
     loading,
     error,
     selectedMonth,
@@ -466,6 +522,11 @@ export function AppProvider({ children }) {
     // Template operations
     addTemplate,
     deleteTemplate,
+
+    // Account Type operations
+    addAccountType,
+    updateAccountType,
+    deleteAccountType,
 
     // Utility
     detectDuplicates,

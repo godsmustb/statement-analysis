@@ -8,14 +8,30 @@ const CATEGORY_COLORS = [
   '#F8BBD0', '#B2DFDB', '#FFCCBC', '#E1BEE7', '#C5CAE9'
 ];
 
+// Default expense and income categories
+const DEFAULT_EXPENSE_CATEGORIES = [
+  'Housing', 'Transportation', 'Food', 'Utilities', 'Healthcare',
+  'Entertainment', 'Shopping', 'Personal Care', 'Education', 'Other Expenses'
+];
+
+const DEFAULT_INCOME_CATEGORIES = [
+  'Salary', 'Freelance', 'Investment', 'Gift', 'Refund', 'Other Income'
+];
+
 export default function CategoryPanel({ onCategorySelect }) {
   const { transactions, categories, addCategory, deleteCategory, renameCategory } = useApp();
-  const [isAdding, setIsAdding] = useState(false);
+  const [isAddingExpense, setIsAddingExpense] = useState(false);
+  const [isAddingIncome, setIsAddingIncome] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [editingCategory, setEditingCategory] = useState(null);
   const [editName, setEditName] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [error, setError] = useState('');
+
+  // Split categories into expense and income based on naming convention
+  // Categories ending with " (Income)" are income categories
+  const expenseCategories = categories.filter(c => !c.endsWith(' (Income)') && c !== 'Unassigned');
+  const incomeCategories = categories.filter(c => c.endsWith(' (Income)'));
 
   const getCategoryColor = (index) => {
     return CATEGORY_COLORS[index % CATEGORY_COLORS.length];
@@ -27,17 +43,19 @@ export default function CategoryPanel({ onCategorySelect }) {
     return { count: categoryTransactions.length, total };
   };
 
-  const handleAddCategory = () => {
-    const validation = validateCategoryName(newCategoryName, categories);
+  const handleAddCategory = (isIncome) => {
+    const categoryName = isIncome ? `${newCategoryName} (Income)` : newCategoryName;
+    const validation = validateCategoryName(categoryName, categories);
 
     if (!validation.isValid) {
       setError(validation.error);
       return;
     }
 
-    if (addCategory(newCategoryName)) {
+    if (addCategory(categoryName)) {
       setNewCategoryName('');
-      setIsAdding(false);
+      setIsAddingExpense(false);
+      setIsAddingIncome(false);
       setError('');
     }
   };
@@ -63,26 +81,24 @@ export default function CategoryPanel({ onCategorySelect }) {
 
   const confirmDelete = () => {
     if (deleteConfirm) {
-      const stats = getCategoryStats(deleteConfirm);
       deleteCategory(deleteConfirm);
       setDeleteConfirm(null);
     }
   };
 
-  const handleDragStart = (e, category) => {
-    e.dataTransfer.setData('category', category);
-  };
+  const renderCategoryList = (categoryList, title, isIncome) => {
+    const isAdding = isIncome ? isAddingIncome : isAddingExpense;
+    const setIsAdding = isIncome ? setIsAddingIncome : setIsAddingExpense;
 
-  return (
-    <>
+    return (
       <div className="card mb-6">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-textDark">Categories</h2>
+          <h2 className="text-xl font-bold text-textDark">{title}</h2>
           <button
             onClick={() => setIsAdding(true)}
             className="btn-primary text-sm"
           >
-            + Add Category
+            + Add
           </button>
         </div>
 
@@ -94,12 +110,12 @@ export default function CategoryPanel({ onCategorySelect }) {
               onChange={(e) => setNewCategoryName(e.target.value)}
               placeholder="Category name..."
               className="input-field mb-2"
-              onKeyPress={(e) => e.key === 'Enter' && handleAddCategory()}
+              onKeyPress={(e) => e.key === 'Enter' && handleAddCategory(isIncome)}
               autoFocus
             />
             {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
             <div className="flex gap-2">
-              <button onClick={handleAddCategory} className="btn-success text-sm">
+              <button onClick={() => handleAddCategory(isIncome)} className="btn-success text-sm">
                 Save
               </button>
               <button
@@ -117,17 +133,16 @@ export default function CategoryPanel({ onCategorySelect }) {
         )}
 
         <div className="space-y-2 max-h-96 overflow-y-auto scrollbar-hide">
-          {categories.map((category, index) => {
+          {categoryList.map((category, index) => {
             const stats = getCategoryStats(category);
             const isEditing = editingCategory === category;
+            const displayName = category.replace(' (Income)', ''); // Remove (Income) suffix for display
 
             return (
               <div
                 key={category}
-                className="flex items-center justify-between p-3 rounded-lg hover:bg-background transition-colors cursor-pointer"
+                className="flex items-center justify-between p-3 rounded-lg hover:bg-background transition-colors"
                 style={{ backgroundColor: isEditing ? '#f0f0f0' : 'transparent' }}
-                onClick={() => onCategorySelect && onCategorySelect(category)}
-                onDragOver={(e) => e.preventDefault()}
               >
                 <div className="flex items-center gap-3 flex-1">
                   <div
@@ -147,7 +162,7 @@ export default function CategoryPanel({ onCategorySelect }) {
                     />
                   ) : (
                     <div className="flex-1">
-                      <span className="font-medium text-textDark">{category}</span>
+                      <span className="font-medium text-textDark">{displayName}</span>
                       <div className="text-sm text-gray-600">
                         {stats.count} transactions • ${stats.total.toFixed(2)}
                       </div>
@@ -187,15 +202,13 @@ export default function CategoryPanel({ onCategorySelect }) {
                       >
                         ✏️
                       </button>
-                      {category !== 'Unassigned' && (
-                        <button
-                          onClick={() => handleDeleteCategory(category)}
-                          className="text-red-500 hover:underline text-sm"
-                          title="Delete"
-                        >
-                          🗑️
-                        </button>
-                      )}
+                      <button
+                        onClick={() => handleDeleteCategory(category)}
+                        className="text-red-500 hover:underline text-sm"
+                        title="Delete"
+                      >
+                        🗑️
+                      </button>
                     </>
                   )}
                 </div>
@@ -204,6 +217,13 @@ export default function CategoryPanel({ onCategorySelect }) {
           })}
         </div>
       </div>
+    );
+  };
+
+  return (
+    <>
+      {renderCategoryList(expenseCategories, 'Categories for Expenses', false)}
+      {renderCategoryList(incomeCategories, 'Categories for Income', true)}
 
       <ConfirmationModal
         isOpen={deleteConfirm !== null}

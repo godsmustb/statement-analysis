@@ -104,6 +104,29 @@ def detect_bank_name(text):
 
     return 'Unknown Bank'
 
+def detect_account_number(text):
+    """
+    Extract account number from PDF text
+    Returns last 4 digits of the account number
+    """
+    # Pattern for TD Bank account numbers (often shows as "Account: XXXX-XXXXXXX" or similar)
+    patterns = [
+        r'account[:\s#]*(\d{4})[-\s]*(\d{7})',  # Account: 1438-6236600
+        r'account[:\s#]*(\d{4})(\d{7})',         # Account: 14386236600
+        r'(\d{4})[-\s](\d{7})',                  # 1438-6236600
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            # Return last 4 digits (last group)
+            last_digits = match.group(2)[-4:] if len(match.groups()) > 1 else match.group(1)[-4:]
+            print(f"[ACCOUNT] Detected account number, last 4 digits: {last_digits}")
+            return last_digits
+
+    print("[ACCOUNT] No account number detected")
+    return None
+
 def detect_statement_month(text):
     """
     Extract statement month from PDF text
@@ -280,14 +303,15 @@ def parse_pdf():
                 for page in pdf_reader.pages:
                     full_text += page.extract_text()
 
-            # Detect bank name and statement month
+            # Detect bank name, statement month, and account number
             bank_name = detect_bank_name(full_text)
             statement_month = detect_statement_month(full_text)
+            account_number = detect_account_number(full_text)
 
             # Extract year from statement_month (format: YYYY-MM)
             statement_year = statement_month.split('-')[0] if statement_month else None
 
-            print(f"[DETECTED] {bank_name}, Statement Month: {statement_month}, Year: {statement_year}")
+            print(f"[DETECTED] {bank_name}, Statement Month: {statement_month}, Year: {statement_year}, Account: {account_number}")
 
             # Parse all tables and combine transactions
             all_transactions = []
@@ -321,6 +345,7 @@ def parse_pdf():
             response = {
                 'bankName': bank_name,
                 'statementMonth': statement_month,
+                'accountNumber': account_number,
                 'transactions': unique_transactions,
                 'parsingRules': {
                     'method': 'camelot',
