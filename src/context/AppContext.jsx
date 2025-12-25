@@ -25,6 +25,7 @@ export function AppProvider({ children }) {
   const [error, setError] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState('');
   const [selectedBank, setSelectedBank] = useState('');
+  const [deletedTransactions, setDeletedTransactions] = useState([]);
 
   // Load data from localStorage on mount
   useEffect(() => {
@@ -77,7 +78,23 @@ export function AppProvider({ children }) {
 
   function addMultipleTransactions(newTransactions) {
     try {
-      const withIds = newTransactions.map(t => ({
+      // Check for duplicates based on date, originalDescription, and amount
+      const isDuplicate = (existing, newTxn) => {
+        const existingDesc = existing.originalDescription || existing.description;
+        const newDesc = newTxn.originalDescription || newTxn.description;
+        return existing.date === newTxn.date &&
+               existingDesc === newDesc &&
+               Math.abs(existing.amount - newTxn.amount) < 0.01; // Allow for tiny float differences
+      };
+
+      // Filter out duplicates
+      const uniqueNew = newTransactions.filter(newTxn => {
+        return !transactions.some(existing => isDuplicate(existing, newTxn));
+      });
+
+      console.log(`Adding ${uniqueNew.length} unique transactions out of ${newTransactions.length} total (${newTransactions.length - uniqueNew.length} duplicates skipped)`);
+
+      const withIds = uniqueNew.map(t => ({
         id: uuidv4(),
         ...t,
         month: t.date.substring(0, 7),
@@ -114,6 +131,10 @@ export function AppProvider({ children }) {
 
   function deleteTransaction(id) {
     try {
+      const toDelete = transactions.find(t => t.id === id);
+      if (toDelete) {
+        setDeletedTransactions([toDelete]); // Store for undo
+      }
       const updated = transactions.filter(t => t.id !== id);
       setTransactions(updated);
       storageService.saveTransactions(updated);
@@ -127,6 +148,10 @@ export function AppProvider({ children }) {
 
   function deleteMultipleTransactions(ids) {
     try {
+      const toDelete = transactions.filter(t => ids.includes(t.id));
+      if (toDelete.length > 0) {
+        setDeletedTransactions(toDelete); // Store for undo
+      }
       const updated = transactions.filter(t => !ids.includes(t.id));
       setTransactions(updated);
       storageService.saveTransactions(updated);
@@ -134,6 +159,23 @@ export function AppProvider({ children }) {
     } catch (error) {
       console.error('Error deleting transactions:', error);
       setError('Failed to delete transactions');
+      return false;
+    }
+  }
+
+  function undoDelete() {
+    try {
+      if (deletedTransactions.length === 0) {
+        return false;
+      }
+      const updated = [...transactions, ...deletedTransactions];
+      setTransactions(updated);
+      storageService.saveTransactions(updated);
+      setDeletedTransactions([]);
+      return true;
+    } catch (error) {
+      console.error('Error undoing delete:', error);
+      setError('Failed to undo delete');
       return false;
     }
   }
@@ -226,7 +268,10 @@ export function AppProvider({ children }) {
 
     try {
       // First, check vendor mappings
-      const withVendorMatch = transactionsToProcess.map(t => {
+      const withVendorMatch = transactionsToProcess.map((t, index) => ({
+        ...t,
+        tempId: t.id || index // Add temporary ID for matching
+      })).map(t => {
         const match = fuzzyMatchVendor(t.description, vendorMappings);
         if (match && match.confidence >= 0.8) {
           return { ...t, category: match.category, confidence: match.confidence, source: 'vendor' };
@@ -239,19 +284,22 @@ export function AppProvider({ children }) {
 
       if (needsCategorization.length === 0) {
         setLoading(false);
-        return withVendorMatch;
+        return withVendorMatch.map(t => {
+          const { tempId, ...rest } = t;
+          return rest;
+        });
       }
 
-      // Use AI for remaining transactions
+      // Use AI for remaining transactions (pass transactions with tempId)
       const categorizations = await openaiService.categorizeTransactions(needsCategorization, categories);
 
-      // Apply categorizations
+      // Apply categorizations using tempId for matching
       const categorized = withVendorMatch.map(t => {
         if (t.category && t.category !== 'Unassigned') {
           return t; // Already categorized by vendor match
         }
 
-        const aiCategory = categorizations.find(c => c.id === t.id);
+        const aiCategory = categorizations.find(c => c.id === t.tempId);
         if (aiCategory) {
           return {
             ...t,
@@ -265,8 +313,14 @@ export function AppProvider({ children }) {
         return { ...t, category: 'Unassigned', confidence: 0, source: 'none' };
       });
 
+      // Remove tempId before returning
+      const cleaned = categorized.map(t => {
+        const { tempId, ...rest } = t;
+        return rest;
+      });
+
       setLoading(false);
-      return categorized;
+      return cleaned;
     } catch (error) {
       console.error('Auto-categorization error:', error);
       setError(error.message);
@@ -333,6 +387,17 @@ export function AppProvider({ children }) {
     return findRecurringTransactions(transactions);
   }
 
+  function clearAllTransactions() {
+    try {
+      setTransactions([]);
+      storageService.saveTransactions([]);
+      return true;
+    } catch (error) {
+      console.error('Error clearing transactions:', error);
+      return false;
+    }
+  }
+
   function clearAllData() {
     try {
       storageService.clearAllData();
@@ -370,6 +435,7 @@ export function AppProvider({ children }) {
     error,
     selectedMonth,
     selectedBank,
+    deletedTransactions,
 
     // Setters
     setSelectedMonth,
@@ -382,6 +448,7 @@ export function AppProvider({ children }) {
     updateTransaction,
     deleteTransaction,
     deleteMultipleTransactions,
+    undoDelete,
     categorizeTransaction,
     categorizeMultipleTransactions,
 
@@ -403,6 +470,7 @@ export function AppProvider({ children }) {
     // Utility
     detectDuplicates,
     detectRecurring,
+    clearAllTransactions,
     clearAllData,
     exportData,
     importData,

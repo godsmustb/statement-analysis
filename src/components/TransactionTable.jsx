@@ -7,10 +7,12 @@ export default function TransactionTable() {
     transactions,
     categories,
     deleteTransaction,
+    updateTransaction,
     categorizeTransaction,
     categorizeMultipleTransactions,
-    selectedMonth,
-    selectedBank
+    clearAllTransactions,
+    undoDelete,
+    deletedTransactions
   } = useApp();
 
   const [sortBy, setSortBy] = useState('date');
@@ -24,15 +26,7 @@ export default function TransactionTable() {
   const filteredTransactions = useMemo(() => {
     let filtered = [...transactions];
 
-    // Filter by month
-    if (selectedMonth) {
-      filtered = filtered.filter(t => t.month === selectedMonth);
-    }
-
-    // Filter by bank
-    if (selectedBank) {
-      filtered = filtered.filter(t => t.bank === selectedBank);
-    }
+    // Note: Removed selectedMonth and selectedBank filters to show all transactions
 
     // Filter by category
     if (filterCategory) {
@@ -77,7 +71,7 @@ export default function TransactionTable() {
     });
 
     return filtered;
-  }, [transactions, selectedMonth, selectedBank, filterCategory, filterStatus, sortBy, sortOrder]);
+  }, [transactions, filterCategory, filterStatus, sortBy, sortOrder]);
 
   const handleSort = (field) => {
     if (sortBy === field) {
@@ -148,27 +142,49 @@ export default function TransactionTable() {
           Transactions ({filteredTransactions.length})
         </h2>
 
-        {selectedTransactions.size > 0 && (
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-600">
-              {selectedTransactions.size} selected
-            </span>
-            <select
-              onChange={(e) => {
-                if (e.target.value) {
-                  handleBulkCategorize(e.target.value);
-                  e.target.value = '';
+        <div className="flex items-center gap-3">
+          {selectedTransactions.size > 0 && (
+            <>
+              <span className="text-sm text-gray-600">
+                {selectedTransactions.size} selected
+              </span>
+              <select
+                onChange={(e) => {
+                  if (e.target.value) {
+                    handleBulkCategorize(e.target.value);
+                    e.target.value = '';
+                  }
+                }}
+                className="text-sm border-2 border-primary rounded-lg px-3 py-1"
+              >
+                <option value="">Bulk Categorize...</option>
+                {categories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </>
+          )}
+          {deletedTransactions.length > 0 && (
+            <button
+              onClick={() => undoDelete()}
+              className="text-sm bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors"
+            >
+              Undo Delete ({deletedTransactions.length})
+            </button>
+          )}
+          {transactions.length > 0 && (
+            <button
+              onClick={() => {
+                if (window.confirm('Are you sure you want to clear all transactions? This cannot be undone.')) {
+                  clearAllTransactions();
                 }
               }}
-              className="text-sm border-2 border-primary rounded-lg px-3 py-1"
+              className="text-sm bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors"
             >
-              <option value="">Bulk Categorize...</option>
-              {categories.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-          </div>
-        )}
+              Clear All
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filters */}
@@ -224,6 +240,9 @@ export default function TransactionTable() {
               >
                 Date {getSortIcon('date')}
               </th>
+              <th className="text-left p-3">
+                Transaction
+              </th>
               <th
                 className="text-left p-3 cursor-pointer hover:bg-gray-50"
                 onClick={() => handleSort('description')}
@@ -242,14 +261,15 @@ export default function TransactionTable() {
               >
                 Category {getSortIcon('category')}
               </th>
-              <th className="text-left p-3">Bank</th>
+              <th className="text-left p-3">Source</th>
+              <th className="text-left p-3">Account Number</th>
               <th className="text-left p-3">Actions</th>
             </tr>
           </thead>
           <tbody>
             {filteredTransactions.length === 0 ? (
               <tr>
-                <td colSpan="7" className="text-center p-8 text-gray-500">
+                <td colSpan="9" className="text-center p-8 text-gray-500">
                   No transactions found. Upload a bank statement to get started!
                 </td>
               </tr>
@@ -270,8 +290,18 @@ export default function TransactionTable() {
                     />
                   </td>
                   <td className="p-3 text-sm">{formatDate(transaction.date)}</td>
-                  <td className="p-3 text-sm max-w-xs truncate" title={transaction.description}>
-                    {transaction.description}
+                  <td className="p-3 text-sm max-w-xs truncate" title={transaction.originalDescription || transaction.description}>
+                    {transaction.originalDescription || transaction.description}
+                  </td>
+                  <td className="p-3">
+                    <input
+                      type="text"
+                      value={transaction.description || ''}
+                      onChange={(e) => updateTransaction(transaction.id, { description: e.target.value })}
+                      className="w-full text-sm border border-gray-300 rounded px-2 py-1"
+                      placeholder="Enter custom name..."
+                      title={transaction.description}
+                    />
                   </td>
                   <td className={`p-3 text-sm font-semibold ${transaction.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
                     {formatCurrency(transaction.amount)}
@@ -288,10 +318,15 @@ export default function TransactionTable() {
                       ))}
                     </select>
                   </td>
-                  <td className="p-3 text-sm">{transaction.bank}</td>
+                  <td className="p-3 text-sm">{transaction.source || transaction.bank}</td>
+                  <td className="p-3 text-sm">{transaction.accountNumber || '-'}</td>
                   <td className="p-3">
                     <button
-                      onClick={() => deleteTransaction(transaction.id)}
+                      onClick={() => {
+                        if (window.confirm('Are you sure you want to delete this transaction?')) {
+                          deleteTransaction(transaction.id);
+                        }
+                      }}
                       className="text-red-500 hover:text-red-700 text-sm"
                       title="Delete"
                     >

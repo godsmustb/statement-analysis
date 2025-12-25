@@ -161,11 +161,16 @@ export function formatDate(dateString) {
   if (!dateString) return '';
 
   try {
-    const date = new Date(dateString);
+    // Parse date as local time to avoid timezone offset issues
+    // Input format: YYYY-MM-DD
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day); // month is 0-indexed
+
     return new Intl.DateTimeFormat('en-US', {
       year: 'numeric',
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
+      timeZone: 'America/Toronto' // Use a consistent timezone
     }).format(date);
   } catch (error) {
     return dateString;

@@ -16,7 +16,7 @@ class OpenAIService {
 
     try {
       const transactionsData = transactions.map((t, index) => ({
-        id: t.id || index,
+        id: t.tempId !== undefined ? t.tempId : (t.id || index),
         description: t.description,
         amount: t.amount,
         date: t.date
@@ -99,7 +99,9 @@ Return categorizations for ALL transactions in the exact JSON format specified.`
     }
 
     try {
-      const systemPrompt = `You are a bank statement parser. Extract transaction data from bank statement text.
+      const systemPrompt = `You are a bank statement parser specialized in Canadian bank statements, especially TD Bank, RBC, Scotiabank, BMO, and CIBC.
+Extract transaction data from bank statement text with high accuracy.
+
 Return JSON only in this exact format:
 {
   "bankName": "detected_bank_name",
@@ -107,7 +109,7 @@ Return JSON only in this exact format:
   "transactions": [
     {
       "date": "YYYY-MM-DD",
-      "description": "transaction description",
+      "description": "EXACT transaction description from PDF",
       "amount": -123.45,
       "isIncome": false
     }
@@ -120,12 +122,51 @@ Return JSON only in this exact format:
   }
 }
 
-Rules:
-1. Amounts should be negative for expenses, positive for income
-2. Clean up descriptions (remove extra spaces, normalize)
-3. Detect the bank name from headers or footers
-4. Identify the statement month/year
-5. Return all transactions found`;
+CRITICAL RULES - FOLLOW EXACTLY:
+
+1. **Amounts - SIGN CONVENTION**:
+   TD Bank statements have TWO separate columns: "Withdrawals" and "Deposits"
+
+   RULE:
+   - If amount is in the "Withdrawals" column → amount MUST be NEGATIVE (e.g., -50.00)
+   - If amount is in the "Deposits" column → amount MUST be POSITIVE (e.g., +100.00)
+
+   EXAMPLES:
+   - Purchase of $25.00 in Withdrawals column → "amount": -25.00, "isIncome": false
+   - Refund of $15.00 in Deposits column → "amount": 15.00, "isIncome": true
+   - Monthly fee $4.95 in Withdrawals column → "amount": -4.95, "isIncome": false
+   - Direct deposit $1500.00 in Deposits column → "amount": 1500.00, "isIncome": true
+
+   NEVER make deposits negative or withdrawals positive!
+
+2. **Dates - ACCURATE PARSING**:
+   - TD Bank uses MM/DD/YYYY format (e.g., 10/31/2024)
+   - Convert to YYYY-MM-DD (e.g., 2024-10-31)
+   - PAY ATTENTION:
+     * 10/31/2024 → 2024-10-31 (October 31st)
+     * 11/04/2024 → 2024-11-04 (November 4th)
+   - DO NOT confuse months and days
+   - Preserve exact dates from the statement
+
+3. **Descriptions**:
+   - Copy EXACTLY as shown in PDF
+   - Do NOT summarize, clean, or modify
+   - Include ALL merchant names, reference numbers, locations
+   - Preserve everything between date and amount
+
+4. **Statement Month**:
+   - Look for "Statement Period: Oct 31, 2024 to Nov 28, 2024"
+   - Extract ending month as YYYY-MM (e.g., "2024-11")
+
+5. **Bank Detection**:
+   - Check for "TD Canada Trust", "TD Bank", "RBC", etc.
+
+6. **Quality Check**:
+   - Count transactions carefully - return ALL transactions
+   - Verify column alignment (Date | Description | Withdrawals | Deposits)
+   - Double-check signs match the column
+
+IMPORTANT: Return ALL transactions, not a sample. Be precise with dates and amounts.`;
 
       const userPrompt = `Parse this bank statement (${bankName}):
 

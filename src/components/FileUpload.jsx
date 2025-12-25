@@ -3,19 +3,18 @@ import { useDropzone } from 'react-dropzone';
 import { useApp } from '../context/AppContext';
 import pdfParser from '../services/pdfParser';
 import { validateFile } from '../utils/validators';
-import { detectMultipleSameMonth } from '../utils/duplicateDetector';
-import ConfirmationModal from './ConfirmationModal';
 
-export default function FileUpload({ selectedBank }) {
+export default function FileUpload() {
   const { addMultipleTransactions, autoCategorizeTransactions, addTemplate } = useApp();
   const [uploading, setUploading] = useState(false);
   const [uploadResults, setUploadResults] = useState([]);
   const [error, setError] = useState(null);
-  const [mergeConfirmation, setMergeConfirmation] = useState(null);
+  const [source, setSource] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
 
   const onDrop = useCallback(async (acceptedFiles) => {
-    if (!selectedBank) {
-      setError('Please select a bank first');
+    if (!source.trim()) {
+      setError('Please enter an account nickname (Source) before uploading');
       return;
     }
 
@@ -45,7 +44,7 @@ export default function FileUpload({ selectedBank }) {
         });
         setUploadResults([...results]);
 
-        const parsed = await pdfParser.parseFile(file, selectedBank);
+        const parsed = await pdfParser.parseFile(file, source);
 
         results[results.length - 1] = {
           fileName: file.name,
@@ -71,9 +70,10 @@ export default function FileUpload({ selectedBank }) {
         };
 
         // Save template if we have parsing rules
-        if (parsed.parsingRules && selectedBank !== 'Unknown') {
+        if (parsed.parsingRules) {
           addTemplate({
             bankName: parsed.bankName,
+            source: source,
             parsingRules: parsed.parsingRules
           });
         }
@@ -91,18 +91,21 @@ export default function FileUpload({ selectedBank }) {
 
     setUploading(false);
 
-    // Check for multiple statements from same month
+    // Add all successful transactions immediately
     const successful = results.filter(r => r.status === 'complete');
-    const duplicateMonths = detectMultipleSameMonth(successful);
-
-    if (duplicateMonths.length > 0) {
-      setMergeConfirmation(duplicateMonths[0]);
-    } else if (successful.length > 0) {
-      // Add all transactions
-      const allTransactions = successful.flatMap(r => r.transactions);
+    if (successful.length > 0) {
+      // Add all transactions with source and account number
+      const allTransactions = successful.flatMap(r =>
+        r.transactions.map(t => ({
+          ...t,
+          bank: r.bankName,
+          source: source,
+          accountNumber: accountNumber
+        }))
+      );
       addMultipleTransactions(allTransactions);
     }
-  }, [selectedBank, addMultipleTransactions, autoCategorizeTransactions, addTemplate]);
+  }, [source, accountNumber, addMultipleTransactions, autoCategorizeTransactions, addTemplate]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -111,20 +114,6 @@ export default function FileUpload({ selectedBank }) {
     },
     multiple: true
   });
-
-  const handleMergeConfirm = () => {
-    if (mergeConfirmation) {
-      const allTransactions = mergeConfirmation.statements.flatMap(s => s.transactions);
-      addMultipleTransactions(allTransactions);
-      setMergeConfirmation(null);
-      setUploadResults([]);
-    }
-  };
-
-  const handleMergeCancel = () => {
-    setMergeConfirmation(null);
-    setUploadResults([]);
-  };
 
   const getStatusIcon = (status) => {
     switch (status) {
@@ -140,9 +129,38 @@ export default function FileUpload({ selectedBank }) {
   };
 
   return (
-    <>
-      <div className="card mb-6">
+    <div className="card mb-6">
         <h2 className="text-xl font-bold text-textDark mb-4">Upload Bank Statements</h2>
+
+        {/* Source and Account Number inputs */}
+        <div className="mb-4 space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-textDark mb-1">
+              Account Nickname (Source) *
+            </label>
+            <input
+              type="text"
+              value={source}
+              onChange={(e) => setSource(e.target.value)}
+              placeholder="e.g., TD Checking, RBC Savings"
+              className="input-field"
+              disabled={uploading}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-textDark mb-1">
+              Account Number (optional)
+            </label>
+            <input
+              type="text"
+              value={accountNumber}
+              onChange={(e) => setAccountNumber(e.target.value)}
+              placeholder="e.g., ****1234"
+              className="input-field"
+              disabled={uploading}
+            />
+          </div>
+        </div>
 
         <div
           {...getRootProps()}
@@ -152,11 +170,11 @@ export default function FileUpload({ selectedBank }) {
               : 'border-secondary border-opacity-50 hover:border-primary hover:bg-primary hover:bg-opacity-5'
           }`}
         >
-          <input {...getInputProps()} disabled={uploading || !selectedBank} />
+          <input {...getInputProps()} disabled={uploading || !source.trim()} />
 
-          {!selectedBank ? (
+          {!source.trim() ? (
             <div>
-              <p className="text-gray-500 mb-2">Please select a bank first</p>
+              <p className="text-gray-500 mb-2">Please enter account nickname first</p>
             </div>
           ) : uploading ? (
             <div>
@@ -227,18 +245,6 @@ export default function FileUpload({ selectedBank }) {
             ))}
           </div>
         )}
-      </div>
-
-      <ConfirmationModal
-        isOpen={mergeConfirmation !== null}
-        title="Merge Statements"
-        message={`You've uploaded ${mergeConfirmation?.count} statements for ${mergeConfirmation?.month}. Would you like to merge all transactions?`}
-        confirmText="Merge All"
-        cancelText="Cancel"
-        type="default"
-        onConfirm={handleMergeConfirm}
-        onCancel={handleMergeCancel}
-      />
-    </>
+    </div>
   );
 }

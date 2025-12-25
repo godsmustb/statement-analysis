@@ -64,44 +64,88 @@ A modern, AI-powered web application for analyzing bank statements with intellig
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 18+ and npm
-- OpenAI API key ([Get one here](https://platform.openai.com/api-keys))
+- **Node.js 18+** and npm ([Download](https://nodejs.org/))
+- **Python 3.8+** ([Download](https://www.python.org/downloads/))
+- **Ghostscript** (Required for PDF table extraction)
+  - Windows: [Download Ghostscript](https://ghostscript.com/releases/gsdnld.html)
+  - macOS: `brew install ghostscript`
+  - Linux: `sudo apt-get install ghostscript`
 
 ### Installation
 
-1. **Clone the repository**
+#### 1. Clone the repository
 ```bash
 git clone https://github.com/yourusername/statement-analysis.git
 cd statement-analysis
 ```
 
-2. **Install dependencies**
+#### 2. Setup Python Backend (Camelot PDF Parser)
+
+**Windows:**
 ```bash
-npm install
+cd backend
+setup.bat
 ```
 
-3. **Set up environment variables**
+**macOS/Linux:**
 ```bash
+cd backend
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+**Start Python backend:**
+```bash
+python app.py
+```
+
+The Python API will run at: `http://localhost:5000`
+
+#### 3. Setup Frontend (React App)
+
+In a **new terminal**, navigate to the project root:
+
+```bash
+# Install frontend dependencies
+npm install
+
+# Setup environment variables
 cp .env.example .env
 ```
 
-Edit `.env` and add your OpenAI API key:
+Edit `.env` and configure:
 ```env
-VITE_OPENAI_API_KEY=sk-your-api-key-here
+VITE_PYTHON_API_URL=http://localhost:5000
 VITE_APP_NAME=Bank Statement Analyzer
-VITE_OPENAI_MODEL=gpt-4o-mini-2024-07-18
 VITE_MAX_FILE_SIZE_MB=10
 ```
 
-4. **Start development server**
+**Start frontend development server:**
 ```bash
 npm run dev
 ```
 
-5. **Open your browser**
+#### 4. Open your browser
 ```
-http://localhost:3000
+http://localhost:3003
 ```
+
+### Running the App
+
+You need **both servers running**:
+
+1. **Terminal 1** - Python Backend:
+   ```bash
+   cd backend
+   venv\Scripts\activate  # On macOS/Linux: source venv/bin/activate
+   python app.py
+   ```
+
+2. **Terminal 2** - Frontend:
+   ```bash
+   npm run dev
+   ```
 
 ## 📖 Usage Guide
 
@@ -145,8 +189,14 @@ If duplicate transactions are detected:
 - **Vite** - Build tool and dev server
 - **Tailwind CSS** - Utility-first styling
 - **Recharts** - Data visualization
-- **PDF.js** - PDF parsing in browser
 - **Fuse.js** - Fuzzy search/matching
+
+### Backend (NEW!)
+- **Python 3.8+** - Backend runtime
+- **Flask** - Lightweight web framework
+- **Camelot** - PDF table extraction (superior accuracy)
+- **Pandas** - Data manipulation
+- **OpenCV** - Image processing for PDFs
 - **React Dropzone** - File upload
 - **Zustand** - State management
 - **Axios** - HTTP client

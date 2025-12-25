@@ -5,11 +5,9 @@ import FileUpload from './components/FileUpload';
 import TemplateSelector from './components/TemplateSelector';
 import TransactionTable from './components/TransactionTable';
 import CategoryPanel from './components/CategoryPanel';
-import DuplicateDetector from './components/DuplicateDetector';
 import ManualEntryModal from './components/ManualEntryModal';
 
 function AppContent() {
-  const [selectedBank, setSelectedBank] = useState('');
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' or 'transactions'
 
@@ -65,19 +63,15 @@ function AppContent() {
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* Left Column: Upload & Categories */}
             <div className="lg:col-span-1 space-y-6">
-              <TemplateSelector
-                selectedBank={selectedBank}
-                onSelectBank={setSelectedBank}
-              />
+              <TemplateSelector />
 
-              <FileUpload selectedBank={selectedBank} />
+              <FileUpload />
 
               <CategoryPanel />
             </div>
 
             {/* Right Column: Transactions */}
-            <div className="lg:col-span-3 space-y-6">
-              <DuplicateDetector />
+            <div className="lg:col-span-3">
               <TransactionTable />
             </div>
           </div>

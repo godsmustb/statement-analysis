@@ -1,56 +1,50 @@
-import * as pdfjsLib from 'pdfjs-dist';
-import openaiService from './openaiService';
-import storageService from './storageService';
-
-// Configure PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+const PYTHON_API_URL = import.meta.env.VITE_PYTHON_API_URL || 'http://localhost:5000';
 
 class PDFParser {
   async parseFile(file, selectedBank = 'Unknown') {
     try {
-      // Convert file to ArrayBuffer
-      const arrayBuffer = await file.arrayBuffer();
+      // Create FormData to send PDF to Python backend
+      const formData = new FormData();
+      formData.append('file', file);
 
-      // Load PDF document
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      console.log('📤 Sending PDF to Python backend for Camelot parsing...');
 
-      // Extract text from all pages
-      let fullText = '';
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items.map(item => item.str).join(' ');
-        fullText += pageText + '\n';
+      // Call Python backend with Camelot
+      const response = await fetch(`${PYTHON_API_URL}/api/parse-pdf`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to parse PDF');
       }
 
-      if (!fullText.trim()) {
-        throw new Error('No text found in PDF. This might be an image-based PDF.');
-      }
+      const parsedData = await response.json();
 
-      // Check if we have a template for this bank
-      const template = storageService.getTemplateByBank(selectedBank);
+      // Debug: Log Python/Camelot response
+      console.log('🐍 Python Camelot Parsed Data:', {
+        bankName: parsedData.bankName,
+        statementMonth: parsedData.statementMonth,
+        transactionCount: parsedData.transactions.length,
+        method: parsedData.parsingRules?.method,
+        sampleTransactions: parsedData.transactions.slice(0, 3)
+      });
 
-      let parsedData;
-
-      if (template && selectedBank !== 'Unknown') {
-        // Try to use template-based parsing first
-        parsedData = this.parseWithTemplate(fullText, template, selectedBank);
-      }
-
-      // If no template or template parsing failed, use AI
-      if (!parsedData || !parsedData.transactions || parsedData.transactions.length === 0) {
-        parsedData = await openaiService.parsePDFContent(fullText, selectedBank);
-      }
+      console.log('[DEBUG] All transactions from backend:', parsedData.transactions);
 
       // Validate and clean the parsed data
       const cleanedTransactions = this.cleanTransactions(parsedData.transactions);
 
+      // Debug: Log cleaned data
+      console.log(`✨ Cleaned Transactions (${cleanedTransactions.length}):`, cleanedTransactions);
+
       return {
         bankName: parsedData.bankName || selectedBank,
-        statementMonth: parsedData.statementMonth || this.detectMonth(fullText),
+        statementMonth: parsedData.statementMonth,
         transactions: cleanedTransactions,
-        parsingRules: parsedData.parsingRules || null,
-        rawText: fullText.substring(0, 1000) // Store sample for debugging
+        parsingRules: parsedData.parsingRules || { method: 'camelot' },
+        rawText: '' // Not needed anymore
       };
     } catch (error) {
       console.error('PDF parsing error:', error);
@@ -71,11 +65,14 @@ class PDFParser {
       while ((match = transactionPattern.exec(text)) !== null) {
         const [, dateStr, description, amountStr] = match;
 
+        const amount = this.normalizeAmount(amountStr);
+        const isWithdrawal = amountStr.includes('-');
+
         transactions.push({
           date: this.normalizeDate(dateStr),
           description: description.trim(),
-          amount: this.normalizeAmount(amountStr),
-          isIncome: !amountStr.includes('-') && parseFloat(amountStr.replace(/[^0-9.-]/g, '')) > 0
+          amount: isWithdrawal ? -Math.abs(amount) : amount,
+          isIncome: !isWithdrawal && amount > 0
         });
       }
 
@@ -95,15 +92,46 @@ class PDFParser {
       return [];
     }
 
-    return transactions
-      .filter(t => t.description && t.date)
-      .map(t => ({
-        date: this.normalizeDate(t.date),
-        description: this.cleanDescription(t.description),
-        amount: this.normalizeAmount(t.amount),
-        isIncome: t.isIncome || t.amount > 0
-      }))
-      .filter(t => t.amount !== 0); // Remove zero-amount transactions
+    console.log(`[CLEAN] Starting with ${transactions.length} transactions`);
+
+    const filtered = transactions.filter(t => {
+      const hasDesc = !!t.description;
+      const hasDate = !!t.date;
+      if (!hasDesc || !hasDate) {
+        console.log(`[CLEAN] Filtered out: desc=${hasDesc}, date=${hasDate}`, t);
+      }
+      return hasDesc && hasDate;
+    });
+
+    console.log(`[CLEAN] After description/date filter: ${filtered.length} transactions`);
+
+    return filtered
+      .map(t => {
+        // Get the amount as-is from AI (it should already have correct sign)
+        let amount = typeof t.amount === 'number' ? t.amount : this.normalizeAmount(t.amount);
+
+        // AI explicitly tells us if it's income
+        const isIncome = t.isIncome === true;
+
+        // Important: DO NOT change the sign based on isIncome
+        // The AI should return withdrawals as negative and deposits as positive
+        // If AI says isIncome=true but amount is negative, trust the amount sign
+
+        return {
+          date: this.normalizeDate(t.date),
+          originalDescription: t.description, // Store original description
+          description: this.cleanDescription(t.description), // Store cleaned description
+          amount: amount, // Keep amount exactly as AI returned it
+          isIncome: isIncome
+        };
+      })
+      .filter(t => {
+        if (t.amount === 0) {
+          console.log(`[CLEAN] Filtered out zero amount:`, t);
+          return false;
+        }
+        return true;
+      });
   }
 
   normalizeDate(dateStr) {
@@ -149,10 +177,19 @@ class PDFParser {
     }
 
     if (typeof amount === 'string') {
-      // Remove currency symbols, commas, and spaces
-      const cleaned = amount.replace(/[$,\s]/g, '');
+      // Check for negative sign or parentheses (accounting format)
+      const isNegative = amount.includes('-') || (amount.includes('(') && amount.includes(')'));
+
+      // Remove currency symbols, commas, spaces, and parentheses
+      const cleaned = amount.replace(/[$,\s()]/g, '');
       const num = parseFloat(cleaned);
-      return isNaN(num) ? 0 : num;
+
+      if (isNaN(num)) {
+        return 0;
+      }
+
+      // Return negative if it was marked as negative
+      return isNegative ? -Math.abs(num) : num;
     }
 
     return 0;
