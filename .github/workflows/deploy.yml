@@ -42,7 +42,7 @@ jobs:
           remote_path: ${{ secrets.FTP_PATH }}
           local_path: ./dist/*
           sftp_only: true
-          port: 22
+          port: ${{ secrets.SFTP_PORT || 22 }}
 
       - name: Deployment complete
         run: echo "Deployment to Hostinger completed successfully!"
