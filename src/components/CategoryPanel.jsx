@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { validateCategoryName } from '../utils/validators';
+import { getCostTypeBadgeStyle, COST_TYPE_FIXED, COST_TYPE_VARIABLE } from '../utils/categoryMetadata';
 import ConfirmationModal from './ConfirmationModal';
 
 const CATEGORY_COLORS = [
@@ -19,7 +20,7 @@ const DEFAULT_INCOME_CATEGORIES = [
 ];
 
 export default function CategoryPanel({ onCategorySelect }) {
-  const { transactions, categories, addCategory, deleteCategory, renameCategory } = useApp();
+  const { transactions, categories, categoryMetadata, addCategory, deleteCategory, renameCategory, updateCategoryCostType } = useApp();
   const [isAddingExpense, setIsAddingExpense] = useState(false);
   const [isAddingIncome, setIsAddingIncome] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -162,10 +163,44 @@ export default function CategoryPanel({ onCategorySelect }) {
                     />
                   ) : (
                     <div className="flex-1">
-                      <span className="font-medium text-textDark">{displayName}</span>
-                      <div className="text-sm text-gray-600">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-textDark">{displayName}</span>
+                        {/* Cost Type Badge */}
+                        {categoryMetadata[category]?.costType && (() => {
+                          const badgeStyle = getCostTypeBadgeStyle(categoryMetadata[category].costType);
+                          return badgeStyle ? (
+                            <span
+                              className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+                              style={{
+                                backgroundColor: badgeStyle.backgroundColor,
+                                color: badgeStyle.color
+                              }}
+                            >
+                              {badgeStyle.label}
+                            </span>
+                          ) : null;
+                        })()}
+                      </div>
+                      <div className="text-sm text-gray-600 mt-1">
                         {stats.count} transactions • ${stats.total.toFixed(2)}
                       </div>
+                      {category !== 'Unassigned' && (
+                        <div className="mt-2">
+                          <select
+                            value={categoryMetadata[category]?.costType || ''}
+                            onChange={(e) => {
+                              const costType = e.target.value || null;
+                              updateCategoryCostType(category, costType);
+                            }}
+                            className="text-xs border border-gray-300 rounded px-2 py-1"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <option value="">No Cost Type</option>
+                            <option value={COST_TYPE_FIXED}>Fixed</option>
+                            <option value={COST_TYPE_VARIABLE}>Variable</option>
+                          </select>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

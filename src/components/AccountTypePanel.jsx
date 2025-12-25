@@ -107,7 +107,7 @@ export default function AccountTypePanel() {
     <>
       <div className="card mb-6">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-textDark">Account Types</h2>
+          <h2 className="text-xl font-bold text-textDark">Accounts</h2>
           <button
             onClick={() => setIsAdding(true)}
             className="btn-primary text-sm"
