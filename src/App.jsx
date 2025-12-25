@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AppProvider } from './context/AppContext';
+import { AppProvider, useApp } from './context/AppContext';
 import Dashboard from './components/Dashboard';
 import FileUpload from './components/FileUpload';
 import TemplateSelector from './components/TemplateSelector';
@@ -7,10 +7,17 @@ import TransactionTable from './components/TransactionTable';
 import CategoryPanel from './components/CategoryPanel';
 import AccountTypePanel from './components/AccountTypePanel';
 import ManualEntryModal from './components/ManualEntryModal';
+import AuthModal from './components/AuthModal';
 
 function AppContent() {
+  const { user, authLoading, signOut } = useApp();
   const [showManualEntry, setShowManualEntry] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' or 'transactions'
+
+  const handleAuthSuccess = () => {
+    setShowAuthModal(false);
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -22,12 +29,42 @@ function AppContent() {
               Bank Statement Analyzer
             </h1>
 
-            <button
-              onClick={() => setShowManualEntry(true)}
-              className="btn-primary"
-            >
-              + Add Transaction
-            </button>
+            <div className="flex items-center gap-4">
+              {user ? (
+                <>
+                  <span className="text-sm text-gray-600">
+                    {user.email}
+                  </span>
+                  <button
+                    onClick={signOut}
+                    className="btn-secondary"
+                  >
+                    Logout
+                  </button>
+                  <button
+                    onClick={() => setShowManualEntry(true)}
+                    className="btn-primary"
+                  >
+                    + Add Transaction
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setShowAuthModal(true)}
+                    className="btn-primary"
+                  >
+                    Login / Sign Up
+                  </button>
+                  <button
+                    onClick={() => setShowManualEntry(true)}
+                    className="btn-secondary"
+                  >
+                    + Add Transaction
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Tab Navigation */}
@@ -86,16 +123,26 @@ function AppContent() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="text-center text-sm text-gray-600">
             <p className="mb-2">
-              🔒 Your data stays on your device. Nothing is stored on external servers except OpenAI API calls for categorization.
+              {user ? (
+                <>🔒 Your data is securely stored in Supabase and synced across all your devices.</>
+              ) : (
+                <>🔒 Your data stays in your browser. Sign up to sync across devices and keep your data safe!</>
+              )}
             </p>
             <p>
-              Built with React + Vite • Powered by OpenAI GPT-4o-mini
+              Built with React + Vite + Supabase • Powered by Camelot PDF Parser
             </p>
           </div>
         </div>
       </footer>
 
       {/* Modals */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onAuthSuccess={handleAuthSuccess}
+      />
+
       <ManualEntryModal
         isOpen={showManualEntry}
         onClose={() => setShowManualEntry(false)}

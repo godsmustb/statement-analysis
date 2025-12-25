@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import storageService from '../services/storageService';
+import supabaseStorageService from '../services/supabaseStorageService';
+import authService from '../services/authService';
 import openaiService from '../services/openaiService';
 import { findDuplicates, findRecurringTransactions } from '../utils/duplicateDetector';
 import { fuzzyMatchVendor, extractVendorName } from '../utils/fuzzyMatch';
@@ -16,8 +18,15 @@ export function useApp() {
 }
 
 export function AppProvider({ children }) {
+  // Authentication state
+  const [user, setUser] = useState(null);
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // Data state
   const [transactions, setTransactions] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [categoryMetadata, setCategoryMetadata] = useState({});
   const [templates, setTemplates] = useState([]);
   const [vendorMappings, setVendorMappings] = useState({});
   const [settings, setSettings] = useState({});
@@ -26,12 +35,41 @@ export function AppProvider({ children }) {
   const [error, setError] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState('');
   const [selectedBank, setSelectedBank] = useState('');
-  const [deletedTransactions, setDeletedTransactions] = useState([]);
+  // Action history for undo (max 5 actions)
+  const [actionHistory, setActionHistory] = useState([]);
 
-  // Load data from localStorage on mount
+  // Check for existing session on mount
   useEffect(() => {
-    loadData();
+    checkAuth();
   }, []);
+
+  // Listen to auth state changes
+  useEffect(() => {
+    const { data: authListener } = authService.onAuthStateChange((event, session) => {
+      console.log('Auth state changed:', event, session?.user?.email);
+      setSession(session);
+      setUser(session?.user || null);
+
+      if (session?.user) {
+        // User logged in - load Supabase data and migrate localStorage if needed
+        loadSupabaseData(session.user.id);
+      } else {
+        // User logged out - load localStorage data
+        loadData();
+      }
+    });
+
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
+  }, []);
+
+  // Load data from localStorage on mount (fallback for non-authenticated users)
+  useEffect(() => {
+    if (!authLoading && !user) {
+      loadData();
+    }
+  }, [authLoading, user]);
 
   // Set default month to current month
   useEffect(() => {
@@ -41,10 +79,33 @@ export function AppProvider({ children }) {
     }
   }, [selectedMonth]);
 
+  async function checkAuth() {
+    try {
+      const { session, error } = await authService.getSession();
+      if (error) {
+        console.error('Auth check error:', error);
+      }
+      setSession(session);
+      setUser(session?.user || null);
+
+      if (session?.user) {
+        await loadSupabaseData(session.user.id);
+      } else {
+        loadData();
+      }
+    } catch (error) {
+      console.error('Error checking auth:', error);
+      loadData();
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
   function loadData() {
     try {
       setTransactions(storageService.getTransactions());
       setCategories(storageService.getCategories());
+      setCategoryMetadata(storageService.getCategoryMetadata());
       setTemplates(storageService.getTemplates());
       setVendorMappings(storageService.getVendorMappings());
       setSettings(storageService.getSettings());
@@ -52,6 +113,168 @@ export function AppProvider({ children }) {
     } catch (error) {
       console.error('Error loading data:', error);
       setError('Failed to load data from storage');
+    }
+  }
+
+  async function loadSupabaseData(userId) {
+    try {
+      setLoading(true);
+
+      // Initialize defaults for new users
+      await supabaseStorageService.initializeDefaults(userId);
+
+      // Check if we need to migrate localStorage data
+      const localTransactions = storageService.getTransactions();
+      const supabaseTransactions = await supabaseStorageService.getTransactions(userId);
+
+      if (localTransactions.length > 0 && supabaseTransactions.length === 0) {
+        // Migrate localStorage to Supabase
+        console.log('Migrating localStorage data to Supabase...');
+        await migrateLocalStorageToSupabase(userId);
+      } else {
+        // Load from Supabase
+        const [transactions, categories, accountTypes] = await Promise.all([
+          supabaseStorageService.getTransactions(userId),
+          supabaseStorageService.getCategories(userId),
+          supabaseStorageService.getAccountTypes(userId)
+        ]);
+
+        setTransactions(transactions);
+        setCategories(categories);
+        setAccountTypes(accountTypes);
+      }
+
+      setLoading(false);
+    } catch (error) {
+      console.error('Error loading Supabase data:', error);
+      setError('Failed to load data from Supabase');
+      setLoading(false);
+    }
+  }
+
+  async function migrateLocalStorageToSupabase(userId) {
+    try {
+      setLoading(true);
+      console.log('Starting migration from localStorage to Supabase...');
+
+      // Get all localStorage data
+      const localTransactions = storageService.getTransactions();
+      const localCategories = storageService.getCategories();
+      const localAccountTypes = storageService.getAccountTypes();
+
+      // Migrate categories
+      if (localCategories.length > 0) {
+        await supabaseStorageService.saveCategories(userId, localCategories);
+        console.log(`Migrated ${localCategories.length} categories`);
+      }
+
+      // Migrate account types
+      if (localAccountTypes.length > 0) {
+        await supabaseStorageService.saveAccountTypes(userId, localAccountTypes);
+        console.log(`Migrated ${localAccountTypes.length} account types`);
+      }
+
+      // Migrate transactions
+      if (localTransactions.length > 0) {
+        await supabaseStorageService.saveTransactions(userId, localTransactions);
+        console.log(`Migrated ${localTransactions.length} transactions`);
+      }
+
+      // Reload from Supabase to get IDs
+      await loadSupabaseData(userId);
+
+      console.log('Migration complete!');
+      setLoading(false);
+    } catch (error) {
+      console.error('Migration error:', error);
+      setError('Failed to migrate data to Supabase');
+      setLoading(false);
+    }
+  }
+
+  async function handleSignOut() {
+    try {
+      await authService.signOut();
+      // Clear local state
+      setUser(null);
+      setSession(null);
+      setTransactions([]);
+      setCategories([]);
+      setAccountTypes([]);
+      // Load localStorage data
+      loadData();
+    } catch (error) {
+      console.error('Sign out error:', error);
+      setError('Failed to sign out');
+    }
+  }
+
+  // Action History Management (max 5 actions)
+  function addToHistory(action) {
+    setActionHistory(prev => {
+      const newHistory = [action, ...prev].slice(0, 5); // Keep only last 5 actions
+      return newHistory;
+    });
+  }
+
+  function undoLastAction() {
+    try {
+      if (actionHistory.length === 0) {
+        return false;
+      }
+
+      const lastAction = actionHistory[0];
+      const remainingHistory = actionHistory.slice(1);
+
+      switch (lastAction.type) {
+        case 'DELETE':
+          // Restore deleted transactions
+          const restoredTransactions = [...transactions, ...lastAction.data.deletedTransactions];
+          setTransactions(restoredTransactions);
+          if (user) {
+            supabaseStorageService.saveTransactions(user.id, restoredTransactions);
+          } else {
+            storageService.saveTransactions(restoredTransactions);
+          }
+          break;
+
+        case 'CATEGORIZE':
+          // Restore previous categories
+          const categorizeRestored = transactions.map(t => {
+            const oldData = lastAction.data.previousState.find(old => old.id === t.id);
+            return oldData ? { ...t, category: oldData.category, costType: oldData.costType } : t;
+          });
+          setTransactions(categorizeRestored);
+          if (user) {
+            supabaseStorageService.saveTransactions(user.id, categorizeRestored);
+          } else {
+            storageService.saveTransactions(categorizeRestored);
+          }
+          break;
+
+        case 'UPDATE':
+          // Restore previous values
+          const updateRestored = transactions.map(t =>
+            t.id === lastAction.data.id ? { ...t, ...lastAction.data.previousValues } : t
+          );
+          setTransactions(updateRestored);
+          if (user) {
+            supabaseStorageService.saveTransactions(user.id, updateRestored);
+          } else {
+            storageService.saveTransactions(updateRestored);
+          }
+          break;
+
+        default:
+          return false;
+      }
+
+      setActionHistory(remainingHistory);
+      return true;
+    } catch (error) {
+      console.error('Error undoing action:', error);
+      setError('Failed to undo action');
+      return false;
     }
   }
 
@@ -68,7 +291,12 @@ export function AppProvider({ children }) {
 
       const updated = [...transactions, newTransaction];
       setTransactions(updated);
-      storageService.saveTransactions(updated);
+
+      if (user) {
+        supabaseStorageService.saveTransaction(user.id, newTransaction);
+      } else {
+        storageService.saveTransactions(updated);
+      }
 
       return newTransaction;
     } catch (error) {
@@ -118,11 +346,37 @@ export function AppProvider({ children }) {
 
   function updateTransaction(id, updates) {
     try {
+      const previousTransaction = transactions.find(t => t.id === id);
+      if (!previousTransaction) return false;
+
+      // Track only the fields that are being updated
+      const previousValues = {};
+      Object.keys(updates).forEach(key => {
+        previousValues[key] = previousTransaction[key];
+      });
+
+      // Add to action history
+      addToHistory({
+        type: 'UPDATE',
+        timestamp: new Date().toISOString(),
+        data: {
+          id,
+          previousValues,
+          newValues: updates
+        }
+      });
+
       const updated = transactions.map(t =>
         t.id === id ? { ...t, ...updates } : t
       );
       setTransactions(updated);
-      storageService.saveTransactions(updated);
+
+      if (user) {
+        supabaseStorageService.updateTransaction(user.id, id, updates);
+      } else {
+        storageService.saveTransactions(updated);
+      }
+
       return true;
     } catch (error) {
       console.error('Error updating transaction:', error);
@@ -134,12 +388,26 @@ export function AppProvider({ children }) {
   function deleteTransaction(id) {
     try {
       const toDelete = transactions.find(t => t.id === id);
-      if (toDelete) {
-        setDeletedTransactions([toDelete]); // Store for undo
-      }
+      if (!toDelete) return false;
+
+      // Add to action history
+      addToHistory({
+        type: 'DELETE',
+        timestamp: new Date().toISOString(),
+        data: {
+          deletedTransactions: [toDelete]
+        }
+      });
+
       const updated = transactions.filter(t => t.id !== id);
       setTransactions(updated);
-      storageService.saveTransactions(updated);
+
+      if (user) {
+        supabaseStorageService.deleteTransaction(user.id, id);
+      } else {
+        storageService.saveTransactions(updated);
+      }
+
       return true;
     } catch (error) {
       console.error('Error deleting transaction:', error);
@@ -151,12 +419,26 @@ export function AppProvider({ children }) {
   function deleteMultipleTransactions(ids) {
     try {
       const toDelete = transactions.filter(t => ids.includes(t.id));
-      if (toDelete.length > 0) {
-        setDeletedTransactions(toDelete); // Store for undo
-      }
+      if (toDelete.length === 0) return false;
+
+      // Add to action history
+      addToHistory({
+        type: 'DELETE',
+        timestamp: new Date().toISOString(),
+        data: {
+          deletedTransactions: toDelete
+        }
+      });
+
       const updated = transactions.filter(t => !ids.includes(t.id));
       setTransactions(updated);
-      storageService.saveTransactions(updated);
+
+      if (user) {
+        supabaseStorageService.deleteMultipleTransactions(user.id, ids);
+      } else {
+        storageService.saveTransactions(updated);
+      }
+
       return true;
     } catch (error) {
       console.error('Error deleting transactions:', error);
@@ -165,34 +447,75 @@ export function AppProvider({ children }) {
     }
   }
 
-  function undoDelete() {
+  function categorizeTransaction(id, category) {
     try {
-      if (deletedTransactions.length === 0) {
-        return false;
-      }
-      const updated = [...transactions, ...deletedTransactions];
-      setTransactions(updated);
-      storageService.saveTransactions(updated);
-      setDeletedTransactions([]);
-      return true;
+      const transaction = transactions.find(t => t.id === id);
+      if (!transaction) return false;
+
+      // Get cost type for this category
+      const costType = categoryMetadata[category]?.costType || null;
+
+      // Add to action history
+      addToHistory({
+        type: 'CATEGORIZE',
+        timestamp: new Date().toISOString(),
+        data: {
+          previousState: [{
+            id: transaction.id,
+            category: transaction.category,
+            costType: transaction.costType
+          }],
+          newCategory: category,
+          newCostType: costType
+        }
+      });
+
+      return updateTransaction(id, { category, costType });
     } catch (error) {
-      console.error('Error undoing delete:', error);
-      setError('Failed to undo delete');
+      console.error('Error categorizing transaction:', error);
       return false;
     }
   }
 
-  function categorizeTransaction(id, category) {
-    return updateTransaction(id, { category });
-  }
-
   function categorizeMultipleTransactions(ids, category) {
     try {
+      // Get cost type for this category
+      const costType = categoryMetadata[category]?.costType || null;
+
+      // Store previous state for undo
+      const previousState = transactions
+        .filter(t => ids.includes(t.id))
+        .map(t => ({
+          id: t.id,
+          category: t.category,
+          costType: t.costType
+        }));
+
+      // Add to action history
+      addToHistory({
+        type: 'CATEGORIZE',
+        timestamp: new Date().toISOString(),
+        data: {
+          previousState,
+          newCategory: category,
+          newCostType: costType
+        }
+      });
+
       const updated = transactions.map(t =>
-        ids.includes(t.id) ? { ...t, category } : t
+        ids.includes(t.id) ? { ...t, category, costType } : t
       );
       setTransactions(updated);
-      storageService.saveTransactions(updated);
+
+      if (user) {
+        // Update each transaction in Supabase
+        ids.forEach(id => {
+          supabaseStorageService.updateTransaction(user.id, id, { category, costType });
+        });
+      } else {
+        storageService.saveTransactions(updated);
+      }
+
       return true;
     } catch (error) {
       console.error('Error categorizing transactions:', error);
@@ -383,8 +706,9 @@ export function AppProvider({ children }) {
   // Account Type operations
   function addAccountType(accountType) {
     try {
-      if (accountTypes.some(at => at.name === accountType.name)) {
-        setError('Account type already exists');
+      // Allow duplicate names as long as the typeFlag is different
+      if (accountTypes.some(at => at.name === accountType.name && at.typeFlag === accountType.typeFlag)) {
+        setError(`Account type "${accountType.name}" with type "${accountType.typeFlag}" already exists`);
         return false;
       }
 
@@ -480,9 +804,16 @@ export function AppProvider({ children }) {
   }
 
   const value = {
-    // State
+    // Authentication state
+    user,
+    session,
+    authLoading,
+    isAuthenticated: !!user,
+
+    // Data state
     transactions,
     categories,
+    categoryMetadata,
     templates,
     vendorMappings,
     settings,
@@ -491,12 +822,15 @@ export function AppProvider({ children }) {
     error,
     selectedMonth,
     selectedBank,
-    deletedTransactions,
+    actionHistory,
 
     // Setters
     setSelectedMonth,
     setSelectedBank,
     setError,
+
+    // Authentication operations
+    signOut: handleSignOut,
 
     // Transaction operations
     addTransaction,
@@ -504,7 +838,7 @@ export function AppProvider({ children }) {
     updateTransaction,
     deleteTransaction,
     deleteMultipleTransactions,
-    undoDelete,
+    undoLastAction,
     categorizeTransaction,
     categorizeMultipleTransactions,
 
@@ -512,6 +846,16 @@ export function AppProvider({ children }) {
     addCategory,
     deleteCategory,
     renameCategory,
+    updateCategoryCostType: (categoryName, costType) => {
+      try {
+        storageService.updateCategoryMetadata(categoryName, { costType });
+        setCategoryMetadata(storageService.getCategoryMetadata());
+        return true;
+      } catch (error) {
+        console.error('Error updating category cost type:', error);
+        return false;
+      }
+    },
 
     // AI operations
     autoCategorizeTransactions,

@@ -1,12 +1,16 @@
+import { DEFAULT_CATEGORY_METADATA } from '../utils/categoryMetadata';
+
 const STORAGE_KEYS = {
   TRANSACTIONS: 'bank_analyzer_transactions',
   CATEGORIES: 'bank_analyzer_categories',
+  CATEGORY_METADATA: 'bank_analyzer_category_metadata',
   TEMPLATES: 'bank_analyzer_templates',
   VENDOR_MAPPINGS: 'bank_analyzer_vendor_mappings',
   SETTINGS: 'bank_analyzer_settings',
   ACCOUNT_TYPES: 'bank_analyzer_account_types'
 };
 
+// Default categories (names only)
 const DEFAULT_CATEGORIES = [
   'Housing',
   'Transportation',
@@ -15,14 +19,16 @@ const DEFAULT_CATEGORIES = [
   'Restaurants',
   'Subscriptions',
   'Other',
-  'Unassigned'
+  'Unassigned',
+  'Main Job (Income)',
+  'Side Hustle (Income)',
+  'Investments (Income)'
 ];
 
 const DEFAULT_ACCOUNT_TYPES = [
-  { id: '1', name: 'TD Checking', typeFlag: 'Checking' },
-  { id: '2', name: 'TD Credit', typeFlag: 'Credit' },
-  { id: '3', name: 'RBC Checking', typeFlag: 'Checking' },
-  { id: '4', name: 'RBC Credit', typeFlag: 'Credit' }
+  { id: '1', name: 'Checking Account', typeFlag: 'Checking', createdAt: new Date().toISOString() },
+  { id: '2', name: 'Savings Account', typeFlag: 'Savings', createdAt: new Date().toISOString() },
+  { id: '3', name: 'Credit Card', typeFlag: 'Credit', createdAt: new Date().toISOString() }
 ];
 
 class StorageService {
@@ -33,6 +39,9 @@ class StorageService {
   initializeDefaults() {
     if (!this.getCategories().length) {
       this.saveCategories(DEFAULT_CATEGORIES);
+    }
+    if (!this.getCategoryMetadata() || Object.keys(this.getCategoryMetadata()).length === 0) {
+      this.saveCategoryMetadata(DEFAULT_CATEGORY_METADATA);
     }
     if (!this.getAccountTypes().length) {
       this.saveAccountTypes(DEFAULT_ACCOUNT_TYPES);
@@ -142,9 +151,44 @@ class StorageService {
       );
       this.saveTransactions(updated);
 
+      // Update category metadata
+      const metadata = this.getCategoryMetadata();
+      if (metadata[oldName]) {
+        metadata[newName] = metadata[oldName];
+        delete metadata[oldName];
+        this.saveCategoryMetadata(metadata);
+      }
+
       return this.saveCategories(categories);
     }
     return false;
+  }
+
+  // Category Metadata
+  getCategoryMetadata() {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.CATEGORY_METADATA);
+      return data ? JSON.parse(data) : {};
+    } catch (error) {
+      console.error('Error reading category metadata:', error);
+      return {};
+    }
+  }
+
+  saveCategoryMetadata(metadata) {
+    try {
+      localStorage.setItem(STORAGE_KEYS.CATEGORY_METADATA, JSON.stringify(metadata));
+      return true;
+    } catch (error) {
+      console.error('Error saving category metadata:', error);
+      return false;
+    }
+  }
+
+  updateCategoryMetadata(categoryName, updates) {
+    const metadata = this.getCategoryMetadata();
+    metadata[categoryName] = { ...metadata[categoryName], ...updates };
+    return this.saveCategoryMetadata(metadata);
   }
 
   // Templates

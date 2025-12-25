@@ -8,8 +8,6 @@ export default function TemplateManager({ isOpen, onClose }) {
   const [editAccountTypeId, setEditAccountTypeId] = useState('');
   const [editAccountNumber, setEditAccountNumber] = useState('');
 
-  if (!isOpen) return null;
-
   // Organize transactions by unique upload (accountTypeId + accountNumber + month)
   const organizedData = useMemo(() => {
     const byUpload = {};
@@ -98,6 +96,8 @@ export default function TemplateManager({ isOpen, onClose }) {
     return organizedData[b].month.localeCompare(organizedData[a].month);
   });
 
+  if (!isOpen) return null;
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content max-w-4xl" onClick={e => e.stopPropagation()}>
@@ -113,8 +113,12 @@ export default function TemplateManager({ isOpen, onClose }) {
 
         {uploadKeys.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
-            <p>No statements uploaded yet.</p>
-            <p className="text-sm mt-2">Upload bank statements to manage them here.</p>
+            <p className="text-lg font-semibold mb-2">No statements uploaded yet</p>
+            <p className="text-sm mt-2">Upload a bank statement PDF using the "Upload Bank Statements" section to see your uploads here.</p>
+            <p className="text-xs mt-4 text-gray-400">
+              Note: All data is stored locally in your browser (localStorage).
+              {transactions.length > 0 && ` You have ${transactions.length} transactions loaded.`}
+            </p>
           </div>
         ) : (
           <div className="space-y-3">
