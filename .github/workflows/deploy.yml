@@ -1,0 +1,52 @@
+name: Build and Deploy to Hostinger
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create .env file
+        run: |
+          echo "VITE_OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" > .env
+          echo "VITE_APP_NAME=Bank Statement Analyzer" >> .env
+          echo "VITE_OPENAI_MODEL=gpt-4o-mini-2024-07-18" >> .env
+          echo "VITE_MAX_FILE_SIZE_MB=10" >> .env
+
+      - name: Build project
+        run: npm run build
+
+      - name: Deploy to Hostinger via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          server-dir: ${{ secrets.FTP_PATH }}
+          local-dir: ./dist/
+          dangerous-clean-slate: false
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/.env
+
+      - name: Deployment complete
+        run: echo "Deployment to Hostinger completed successfully!"
