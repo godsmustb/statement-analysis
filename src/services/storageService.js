@@ -1,4 +1,5 @@
 import { DEFAULT_CATEGORY_METADATA } from '../utils/categoryMetadata';
+import { v4 as uuidv4 } from 'uuid';
 
 const STORAGE_KEYS = {
   TRANSACTIONS: 'bank_analyzer_transactions',
@@ -26,9 +27,9 @@ const DEFAULT_CATEGORIES = [
 ];
 
 const DEFAULT_ACCOUNT_TYPES = [
-  { id: '1', name: 'Checking Account', typeFlag: 'Checking', createdAt: new Date().toISOString() },
-  { id: '2', name: 'Savings Account', typeFlag: 'Savings', createdAt: new Date().toISOString() },
-  { id: '3', name: 'Credit Card', typeFlag: 'Credit', createdAt: new Date().toISOString() }
+  { id: uuidv4(), name: 'Checking Account', typeFlag: 'Checking', createdAt: new Date().toISOString() },
+  { id: uuidv4(), name: 'Savings Account', typeFlag: 'Savings', createdAt: new Date().toISOString() },
+  { id: uuidv4(), name: 'Credit Card', typeFlag: 'Credit', createdAt: new Date().toISOString() }
 ];
 
 class StorageService {
