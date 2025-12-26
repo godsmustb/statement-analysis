@@ -47,20 +47,15 @@ jobs:
           SOURCE: "dist/"
           EXCLUDE: "/dist/, **/.git*, **/.github*, **/node_modules/"
           SCRIPT_BEFORE: |
-            whoami
-            pwd
-            echo "=== Checking home directory ==="
-            ls -la ~/
-            echo "=== Checking public_html ==="
-            ls -la ~/public_html/ || echo "public_html not found"
-            echo "=== Current directory structure ==="
-            find ~/public_html -maxdepth 2 -type d 2>/dev/null || echo "Cannot find directory"
+            echo "=== Clearing public_html directory ==="
+            rm -rf ~/public_html/*
+            rm -rf ~/public_html/.htaccess
+            echo "✅ Directory cleared, ready for fresh deployment"
           SCRIPT_AFTER: |
-            echo "Deployment completed successfully!"
-            echo "=== Files in public_html root ==="
-            ls -la ~/public_html/
-            echo "=== Checking for nested dist or public_html ==="
-            ls -la ~/public_html/dist/ 2>/dev/null || echo "No nested dist folder"
-            ls -la ~/public_html/public_html/ 2>/dev/null || echo "No nested public_html folder"
-            echo "=== Looking for index.html ==="
-            find ~/public_html -name "index.html" -type f
+            echo "=== Deployment completed successfully! ==="
+            echo "=== Verifying deployed files ==="
+            ls -lah ~/public_html/
+            echo "=== Verifying assets folder ==="
+            ls -lah ~/public_html/assets/ | head -10
+            echo "=== Checking index.html size ==="
+            wc -c ~/public_html/index.html
