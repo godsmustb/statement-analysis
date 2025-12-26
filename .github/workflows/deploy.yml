@@ -48,7 +48,19 @@ jobs:
           EXCLUDE: "/dist/, **/.git*, **/.github*, **/node_modules/"
           SCRIPT_BEFORE: |
             whoami
-            ls -la
+            pwd
+            echo "=== Checking home directory ==="
+            ls -la ~/
+            echo "=== Checking public_html ==="
+            ls -la ~/public_html/ || echo "public_html not found"
+            echo "=== Current directory structure ==="
+            find ~/public_html -maxdepth 2 -type d 2>/dev/null || echo "Cannot find directory"
           SCRIPT_AFTER: |
             echo "Deployment completed successfully!"
-            ls -la ${{ secrets.SSH_TARGET }}
+            echo "=== Files in public_html root ==="
+            ls -la ~/public_html/
+            echo "=== Checking for nested dist or public_html ==="
+            ls -la ~/public_html/dist/ 2>/dev/null || echo "No nested dist folder"
+            ls -la ~/public_html/public_html/ 2>/dev/null || echo "No nested public_html folder"
+            echo "=== Looking for index.html ==="
+            find ~/public_html -name "index.html" -type f
