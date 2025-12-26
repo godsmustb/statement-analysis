@@ -123,25 +123,34 @@ export function AppProvider({ children }) {
       // Initialize defaults for new users
       await supabaseStorageService.initializeDefaults(userId);
 
-      // Check if we need to migrate localStorage data
+      // Always check for localStorage data to merge
       const localTransactions = storageService.getTransactions();
-      const supabaseTransactions = await supabaseStorageService.getTransactions(userId);
+      const localCategories = storageService.getCategories();
+      const localAccountTypes = storageService.getAccountTypes();
 
-      if (localTransactions.length > 0 && supabaseTransactions.length === 0) {
-        // Migrate localStorage to Supabase
-        console.log('Migrating localStorage data to Supabase...');
-        await migrateLocalStorageToSupabase(userId);
+      // Load from Supabase
+      const [supabaseTransactions, supabaseCategories, supabaseAccountTypes] = await Promise.all([
+        supabaseStorageService.getTransactions(userId),
+        supabaseStorageService.getCategories(userId),
+        supabaseStorageService.getAccountTypes(userId)
+      ]);
+
+      // If there's local data, merge it with Supabase data
+      if (localTransactions.length > 0 || localCategories.length > 0 || localAccountTypes.length > 0) {
+        console.log('Merging localStorage data with Supabase...');
+        await mergeLocalStorageWithSupabase(userId, {
+          localTransactions,
+          localCategories,
+          localAccountTypes,
+          supabaseTransactions,
+          supabaseCategories,
+          supabaseAccountTypes
+        });
       } else {
-        // Load from Supabase
-        const [transactions, categories, accountTypes] = await Promise.all([
-          supabaseStorageService.getTransactions(userId),
-          supabaseStorageService.getCategories(userId),
-          supabaseStorageService.getAccountTypes(userId)
-        ]);
-
-        setTransactions(transactions);
-        setCategories(categories);
-        setAccountTypes(accountTypes);
+        // No local data, just use Supabase data
+        setTransactions(supabaseTransactions);
+        setCategories(supabaseCategories);
+        setAccountTypes(supabaseAccountTypes);
       }
 
       setLoading(false);
@@ -149,6 +158,104 @@ export function AppProvider({ children }) {
       console.error('Error loading Supabase data:', error);
       setError('Failed to load data from Supabase');
       setLoading(false);
+    }
+  }
+
+  async function mergeLocalStorageWithSupabase(userId, data) {
+    try {
+      const {
+        localTransactions,
+        localCategories,
+        localAccountTypes,
+        supabaseTransactions,
+        supabaseCategories,
+        supabaseAccountTypes
+      } = data;
+
+      // Merge categories (add only new ones)
+      const newCategories = localCategories.filter(cat => !supabaseCategories.includes(cat));
+      if (newCategories.length > 0) {
+        await supabaseStorageService.saveCategories(userId, newCategories);
+        console.log(`Merged ${newCategories.length} new categories`);
+      }
+
+      // Merge account types (check by name AND typeFlag)
+      // IMPORTANT: Generate new UUIDs for account types from localStorage
+      const newAccountTypes = localAccountTypes.filter(localAt =>
+        !supabaseAccountTypes.some(supaAt =>
+          supaAt.name === localAt.name && supaAt.typeFlag === localAt.typeFlag
+        )
+      );
+
+      // Create a mapping of old IDs to new UUIDs
+      const accountTypeIdMap = {};
+
+      if (newAccountTypes.length > 0) {
+        // Generate new UUIDs for account types
+        const accountTypesWithUUIDs = newAccountTypes.map(at => {
+          const newId = uuidv4();
+          accountTypeIdMap[at.id] = newId; // Store mapping
+          return {
+            ...at,
+            id: newId,
+            createdAt: at.createdAt || new Date().toISOString()
+          };
+        });
+
+        await supabaseStorageService.saveAccountTypes(userId, accountTypesWithUUIDs);
+        console.log(`Merged ${accountTypesWithUUIDs.length} new account types with new UUIDs`);
+      }
+
+      // Merge transactions (check for duplicates by date, originalDescription, and amount)
+      const isDuplicate = (local, supabase) => {
+        const localDesc = local.originalDescription || local.description;
+        const supaDesc = supabase.originalDescription || supabase.description;
+        return local.date === supabase.date &&
+               localDesc === supaDesc &&
+               Math.abs(local.amount - supabase.amount) < 0.01;
+      };
+
+      const newTransactions = localTransactions.filter(localTx =>
+        !supabaseTransactions.some(supaTx => isDuplicate(localTx, supaTx))
+      );
+
+      if (newTransactions.length > 0) {
+        // Update accountTypeId references to use new UUIDs
+        const transactionsWithUpdatedIds = newTransactions.map(tx => {
+          if (tx.accountTypeId && accountTypeIdMap[tx.accountTypeId]) {
+            return {
+              ...tx,
+              id: uuidv4(), // Generate new UUID for transaction
+              accountTypeId: accountTypeIdMap[tx.accountTypeId]
+            };
+          }
+          return {
+            ...tx,
+            id: uuidv4() // Generate new UUID for transaction
+          };
+        });
+
+        await supabaseStorageService.saveTransactions(userId, transactionsWithUpdatedIds);
+        console.log(`Merged ${transactionsWithUpdatedIds.length} new transactions`);
+      }
+
+      // Load all merged data from Supabase
+      const [transactions, categories, accountTypes] = await Promise.all([
+        supabaseStorageService.getTransactions(userId),
+        supabaseStorageService.getCategories(userId),
+        supabaseStorageService.getAccountTypes(userId)
+      ]);
+
+      setTransactions(transactions);
+      setCategories(categories);
+      setAccountTypes(accountTypes);
+
+      // Clear localStorage after successful merge
+      storageService.clearAllData();
+      console.log('Merge complete! Cleared localStorage.');
+    } catch (error) {
+      console.error('Merge error:', error);
+      throw error;
     }
   }
 
@@ -306,7 +413,7 @@ export function AppProvider({ children }) {
     }
   }
 
-  function addMultipleTransactions(newTransactions) {
+  async function addMultipleTransactions(newTransactions) {
     try {
       // Check for duplicates based on date, originalDescription, and amount
       const isDuplicate = (existing, newTxn) => {
@@ -334,7 +441,12 @@ export function AppProvider({ children }) {
 
       const updated = [...transactions, ...withIds];
       setTransactions(updated);
-      storageService.saveTransactions(updated);
+
+      if (user) {
+        await supabaseStorageService.saveTransactions(user.id, withIds);
+      } else {
+        storageService.saveTransactions(updated);
+      }
 
       return withIds;
     } catch (error) {
@@ -524,7 +636,7 @@ export function AppProvider({ children }) {
   }
 
   // Category operations
-  function addCategory(categoryName) {
+  async function addCategory(categoryName) {
     try {
       if (categories.includes(categoryName)) {
         setError('Category already exists');
@@ -533,7 +645,13 @@ export function AppProvider({ children }) {
 
       const updated = [...categories, categoryName];
       setCategories(updated);
-      storageService.saveCategories(updated);
+
+      if (user) {
+        await supabaseStorageService.addCategory(user.id, categoryName);
+      } else {
+        storageService.saveCategories(updated);
+      }
+
       return true;
     } catch (error) {
       console.error('Error adding category:', error);
@@ -542,19 +660,28 @@ export function AppProvider({ children }) {
     }
   }
 
-  function deleteCategory(categoryName) {
+  async function deleteCategory(categoryName) {
     try {
       // Move all transactions with this category to Unassigned
       const updatedTransactions = transactions.map(t =>
         t.category === categoryName ? { ...t, category: 'Unassigned' } : t
       );
       setTransactions(updatedTransactions);
-      storageService.saveTransactions(updatedTransactions);
+
+      if (user) {
+        await supabaseStorageService.saveTransactions(user.id, updatedTransactions);
+        await supabaseStorageService.deleteCategory(user.id, categoryName);
+      } else {
+        storageService.saveTransactions(updatedTransactions);
+      }
 
       // Remove category
       const updatedCategories = categories.filter(c => c !== categoryName);
       setCategories(updatedCategories);
-      storageService.saveCategories(updatedCategories);
+
+      if (!user) {
+        storageService.saveCategories(updatedCategories);
+      }
 
       return true;
     } catch (error) {
@@ -564,19 +691,28 @@ export function AppProvider({ children }) {
     }
   }
 
-  function renameCategory(oldName, newName) {
+  async function renameCategory(oldName, newName) {
     try {
       // Update all transactions
       const updatedTransactions = transactions.map(t =>
         t.category === oldName ? { ...t, category: newName } : t
       );
       setTransactions(updatedTransactions);
-      storageService.saveTransactions(updatedTransactions);
+
+      if (user) {
+        await supabaseStorageService.saveTransactions(user.id, updatedTransactions);
+        await supabaseStorageService.renameCategory(user.id, oldName, newName);
+      } else {
+        storageService.saveTransactions(updatedTransactions);
+      }
 
       // Update categories
       const updatedCategories = categories.map(c => c === oldName ? newName : c);
       setCategories(updatedCategories);
-      storageService.saveCategories(updatedCategories);
+
+      if (!user) {
+        storageService.saveCategories(updatedCategories);
+      }
 
       return true;
     } catch (error) {
@@ -704,7 +840,7 @@ export function AppProvider({ children }) {
   }
 
   // Account Type operations
-  function addAccountType(accountType) {
+  async function addAccountType(accountType) {
     try {
       // Allow duplicate names as long as the typeFlag is different
       if (accountTypes.some(at => at.name === accountType.name && at.typeFlag === accountType.typeFlag)) {
@@ -720,7 +856,13 @@ export function AppProvider({ children }) {
 
       const updated = [...accountTypes, newAccountType];
       setAccountTypes(updated);
-      storageService.saveAccountTypes(updated);
+
+      if (user) {
+        await supabaseStorageService.addAccountType(user.id, newAccountType);
+      } else {
+        storageService.saveAccountTypes(updated);
+      }
+
       return newAccountType;
     } catch (error) {
       console.error('Error adding account type:', error);
@@ -729,13 +871,19 @@ export function AppProvider({ children }) {
     }
   }
 
-  function updateAccountType(id, updates) {
+  async function updateAccountType(id, updates) {
     try {
       const updated = accountTypes.map(at =>
         at.id === id ? { ...at, ...updates } : at
       );
       setAccountTypes(updated);
-      storageService.saveAccountTypes(updated);
+
+      if (user) {
+        await supabaseStorageService.updateAccountType(user.id, id, updates);
+      } else {
+        storageService.saveAccountTypes(updated);
+      }
+
       return true;
     } catch (error) {
       console.error('Error updating account type:', error);
@@ -744,11 +892,17 @@ export function AppProvider({ children }) {
     }
   }
 
-  function deleteAccountType(id) {
+  async function deleteAccountType(id) {
     try {
       const updated = accountTypes.filter(at => at.id !== id);
       setAccountTypes(updated);
-      storageService.saveAccountTypes(updated);
+
+      if (user) {
+        await supabaseStorageService.deleteAccountType(user.id, id);
+      } else {
+        storageService.saveAccountTypes(updated);
+      }
+
       return true;
     } catch (error) {
       console.error('Error deleting account type:', error);
@@ -766,10 +920,16 @@ export function AppProvider({ children }) {
     return findRecurringTransactions(transactions);
   }
 
-  function clearAllTransactions() {
+  async function clearAllTransactions() {
     try {
       setTransactions([]);
-      storageService.saveTransactions([]);
+
+      if (user) {
+        await supabaseStorageService.clearAllTransactions(user.id);
+      } else {
+        storageService.saveTransactions([]);
+      }
+
       return true;
     } catch (error) {
       console.error('Error clearing transactions:', error);
@@ -777,10 +937,18 @@ export function AppProvider({ children }) {
     }
   }
 
-  function clearAllData() {
+  async function clearAllData() {
     try {
-      storageService.clearAllData();
-      loadData();
+      if (user) {
+        // Clear Supabase data
+        await supabaseStorageService.clearAllTransactions(user.id);
+        // Re-initialize with defaults
+        await supabaseStorageService.initializeDefaults(user.id);
+        await loadSupabaseData(user.id);
+      } else {
+        storageService.clearAllData();
+        loadData();
+      }
       return true;
     } catch (error) {
       console.error('Error clearing data:', error);
@@ -789,13 +957,27 @@ export function AppProvider({ children }) {
   }
 
   function exportData() {
-    return storageService.exportData();
+    // Export current state (works for both authenticated and non-authenticated)
+    return {
+      transactions,
+      categories,
+      accountTypes,
+      exportDate: new Date().toISOString()
+    };
   }
 
-  function importData(data) {
+  async function importData(data) {
     try {
-      storageService.importData(data);
-      loadData();
+      if (user) {
+        // Import to Supabase
+        if (data.categories) await supabaseStorageService.saveCategories(user.id, data.categories);
+        if (data.accountTypes) await supabaseStorageService.saveAccountTypes(user.id, data.accountTypes);
+        if (data.transactions) await supabaseStorageService.saveTransactions(user.id, data.transactions);
+        await loadSupabaseData(user.id);
+      } else {
+        storageService.importData(data);
+        loadData();
+      }
       return true;
     } catch (error) {
       console.error('Error importing data:', error);

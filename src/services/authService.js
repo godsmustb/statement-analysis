@@ -1,10 +1,14 @@
-import { supabase } from '../lib/supabaseClient';
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 
 class AuthService {
   /**
    * Sign up a new user with email and password
    */
   async signUp(email, password) {
+    if (!isSupabaseConfigured) {
+      return { user: null, session: null, error: 'Supabase is not configured. Authentication is unavailable.' };
+    }
+
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -24,6 +28,10 @@ class AuthService {
    * Sign in an existing user with email and password
    */
   async signIn(email, password) {
+    if (!isSupabaseConfigured) {
+      return { user: null, session: null, error: 'Supabase is not configured. Authentication is unavailable.' };
+    }
+
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -57,6 +65,10 @@ class AuthService {
    * Get the current session
    */
   async getSession() {
+    if (!isSupabaseConfigured) {
+      return { session: null, error: null };
+    }
+
     try {
       const { data: { session }, error } = await supabase.auth.getSession();
       if (error) throw error;
@@ -85,6 +97,10 @@ class AuthService {
    * Listen to auth state changes
    */
   onAuthStateChange(callback) {
+    if (!isSupabaseConfigured) {
+      return { data: { subscription: { unsubscribe: () => {} } } };
+    }
+
     return supabase.auth.onAuthStateChange((event, session) => {
       callback(event, session);
     });
