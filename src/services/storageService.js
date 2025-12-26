@@ -16,20 +16,20 @@ const DEFAULT_CATEGORIES = [
   'Housing',
   'Transportation',
   'Grocery',
-  'Shopping',
   'Restaurants',
+  'Shopping',
   'Subscriptions',
   'Other',
   'Unassigned',
   'Main Job (Income)',
-  'Side Hustle (Income)',
-  'Investments (Income)'
+  'Side Hustle (Income)'
 ];
 
 const DEFAULT_ACCOUNT_TYPES = [
-  { id: uuidv4(), name: 'Checking Account', typeFlag: 'Checking', createdAt: new Date().toISOString() },
-  { id: uuidv4(), name: 'Savings Account', typeFlag: 'Savings', createdAt: new Date().toISOString() },
-  { id: uuidv4(), name: 'Credit Card', typeFlag: 'Credit', createdAt: new Date().toISOString() }
+  { id: uuidv4(), name: 'TD Checking', typeFlag: 'Checking', createdAt: new Date().toISOString() },
+  { id: uuidv4(), name: 'TD Credit', typeFlag: 'Credit', createdAt: new Date().toISOString() },
+  { id: uuidv4(), name: 'RBC Checking', typeFlag: 'Checking', createdAt: new Date().toISOString() },
+  { id: uuidv4(), name: 'RBC Credit', typeFlag: 'Credit', createdAt: new Date().toISOString() }
 ];
 
 class StorageService {

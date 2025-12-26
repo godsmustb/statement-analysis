@@ -11,12 +11,12 @@ const CATEGORY_COLORS = [
 
 // Default expense and income categories
 const DEFAULT_EXPENSE_CATEGORIES = [
-  'Housing', 'Transportation', 'Food', 'Utilities', 'Healthcare',
-  'Entertainment', 'Shopping', 'Personal Care', 'Education', 'Other Expenses'
+  'Housing', 'Transportation', 'Grocery', 'Restaurants',
+  'Shopping', 'Subscriptions', 'Other'
 ];
 
 const DEFAULT_INCOME_CATEGORIES = [
-  'Salary', 'Freelance', 'Investment', 'Gift', 'Refund', 'Other Income'
+  'Main Job', 'Side Hustle'
 ];
 
 export default function CategoryPanel({ onCategorySelect }) {

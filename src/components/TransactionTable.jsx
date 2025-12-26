@@ -29,6 +29,7 @@ export default function TransactionTable() {
   const [showSimilarModal, setShowSimilarModal] = useState(false);
   const [selectedSourceTransaction, setSelectedSourceTransaction] = useState(null);
   const [similarTransactionsList, setSimilarTransactionsList] = useState([]);
+  const [triggeringCategory, setTriggeringCategory] = useState('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState(null);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
@@ -356,6 +357,7 @@ export default function TransactionTable() {
                             // Found similar transactions - show modal
                             setSelectedSourceTransaction(transaction);
                             setSimilarTransactionsList(similar);
+                            setTriggeringCategory(category); // Store the category that triggered the modal
                             setShowSimilarModal(true);
                             // Don't categorize yet - wait for user to select in modal
                           } else {
@@ -411,10 +413,12 @@ export default function TransactionTable() {
           setShowSimilarModal(false);
           setSelectedSourceTransaction(null);
           setSimilarTransactionsList([]);
+          setTriggeringCategory('');
         }}
         sourceTransaction={selectedSourceTransaction}
         similarTransactions={similarTransactionsList}
         categories={categories}
+        initialCategory={triggeringCategory}
         onCategorize={(transactionIds, category) => {
           // Include the source transaction ID in the bulk categorization
           const allTransactionIds = selectedSourceTransaction
@@ -428,6 +432,7 @@ export default function TransactionTable() {
           setShowSimilarModal(false);
           setSelectedSourceTransaction(null);
           setSimilarTransactionsList([]);
+          setTriggeringCategory('');
         }}
       />
 

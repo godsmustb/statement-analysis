@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { formatCurrency, formatDate } from '../utils/validators';
 
 export default function SimilarTransactionsModal({
@@ -7,10 +7,18 @@ export default function SimilarTransactionsModal({
   sourceTransaction,
   similarTransactions,
   categories,
+  initialCategory = '',
   onCategorize
 }) {
   const [selectedTransactionIds, setSelectedTransactionIds] = useState(new Set());
-  const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState(initialCategory);
+
+  // Update selectedCategory when initialCategory changes (modal opens with new category)
+  useEffect(() => {
+    if (isOpen && initialCategory) {
+      setSelectedCategory(initialCategory);
+    }
+  }, [isOpen, initialCategory]);
 
   if (!isOpen || !sourceTransaction) return null;
 
